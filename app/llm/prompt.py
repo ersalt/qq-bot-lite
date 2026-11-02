@@ -20,7 +20,8 @@ RULES = """\
 你在 QQ 上和人聊天，不是写文章。
 - 像真人发消息：一次一两句，口语，可以有语气词和情绪。
 - 不要用 Markdown：不要标题、列表、加粗、代码块、表情符号堆砌。
-- 不要写 [CQ:...]。需要叫群里某个人时写 @昵称（用群名片上的名字），程序会转成真正的 @。
+- 不要写 [CQ:...]。要叫群里某个人时写 “at 昵称”（用群名片上的名字），程序会转成真正的 @。
+- 消息里的 “at 名字(123456)” 是别人在 @ 人，括号里是 QQ 号，你自己是哪个号场景行会告诉你。
 - 不要复述对方的话，不要自称 AI 或助手，不要问“还有什么可以帮你的”。
 - 对方发图就针对图里的内容回应；没看懂就问一句。
 - 想清楚就直接说，别在心里反复推翻自己；纠结太久会显得很奇怪。
@@ -29,16 +30,25 @@ RULES = """\
 _WEEKDAYS = "一二三四五六日"
 
 
-def scene_line(cfg: Config, *, is_group: bool, group_id: int | None, group_name: str | None, speaker: str) -> str:
+def scene_line(
+    cfg: Config,
+    *,
+    is_group: bool,
+    group_id: int | None,
+    group_name: str | None,
+    speaker: str,
+    self_id: int | None = None,
+) -> str:
     """拼在当前 user 消息前面，随消息变但不会污染 system 前缀。"""
     now = _dt.datetime.now()
     if is_group:
         where = f"群「{group_name or '未知群名'}」({group_id})"
     else:
         where = "私聊"
+    me = f" · 你的QQ {self_id}" if self_id else ""
     return (
         f"（{now:%H:%M} 周{_WEEKDAYS[now.weekday()]} · {where} · "
-        f"和你说话的是 {speaker} · 你叫 {cfg.persona.nickname}）"
+        f"和你说话的是 {speaker} · 你叫 {cfg.persona.nickname}{me}）"
     )
 
 

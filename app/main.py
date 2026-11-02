@@ -21,6 +21,7 @@ from .core.pipeline import ChatService
 from .extensions.base import ExtensionRegistry
 from .llm.client import LLMClient
 from .media.images import ImageLoader
+from .onebot.members import MemberDirectory
 from .onebot.server import OneBotServer
 from .persona import Persona
 from .reply.sender import ReplySender
@@ -102,7 +103,8 @@ def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
     persona = Persona(cfg)
     llm = LLMClient(cfg.llm)
     images = ImageLoader(cfg.images)
-    sender = ReplySender(cfg)
+    members = MemberDirectory()
+    sender = ReplySender(cfg, members)
     extensions = ExtensionRegistry(cfg.extensions.enabled)
 
     server_holder: dict[str, OneBotServer] = {}
@@ -123,6 +125,7 @@ def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
         images=images,
         sender=sender,
         extensions=extensions,
+        members=members,
         get_connection=get_connection,
         get_self_id=get_self_id,
     )

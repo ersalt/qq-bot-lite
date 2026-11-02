@@ -19,8 +19,8 @@ from ..onebot.protocol import at_segment, reply_segment, text_segment
 log = logging.getLogger(__name__)
 
 _CQ_RE = re.compile(r"\[CQ:[^\]]*\]")
-# 模型写的 @昵称：到空白、标点或另一个 @ 为止
-_MENTION_RE = re.compile(r"@([^\s@\[\]{}<>，。！？、,.!?：:；;\"'（）()]{1,20})")
+# 模型写的提及：统一用 "at 昵称"，兼容旧写法 "@昵称"
+_MENTION_RE = re.compile(r"(?<![A-Za-z0-9_])(?:at\s+|@)([\w\u4e00-\u9fff·]{1,20})")
 
 
 @dataclass(slots=True)
@@ -51,10 +51,10 @@ def clean_text(text: str, bot_name: str) -> str:
 
 
 class ReplySender:
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: Config, members: MemberDirectory | None = None):
         self.cfg = cfg
         self._sent: dict[tuple[str, str], float] = {}
-        self.members = MemberDirectory()
+        self.members = members or MemberDirectory()
 
     async def deliver(
         self,

@@ -18,6 +18,7 @@ from ..llm.tokens import estimate_text_tokens
 from ..media.images import ImageLoader
 from ..onebot.client import OneBotConnection
 from ..onebot.events import MessageEvent
+from ..onebot.members import MemberDirectory
 from ..persona import Persona
 from ..reply.segments import Segmenter
 from ..reply.sender import ReplySender, clean_text
@@ -63,6 +64,7 @@ class ChatService:
         images: ImageLoader,
         sender: ReplySender,
         extensions: ExtensionRegistry,
+        members: MemberDirectory,
         get_connection: Callable[[], OneBotConnection | None],
         get_self_id: Callable[[], int | None],
     ):
@@ -73,6 +75,7 @@ class ChatService:
         self.images = images
         self.sender = sender
         self.extensions = extensions
+        self.members = members
         self.get_connection = get_connection
         self.get_self_id = get_self_id
         self._locks: dict[str, asyncio.Lock] = {}
@@ -100,6 +103,13 @@ class ChatService:
         )
 
         group_label = await self._group_label(event)
+        conn = self.get_connection()
+        if conn is not None and event.is_group and event.group_id is not None:
+            # 把 @123456 还原成 @群名片(123456)，模型才知道在叫谁
+            try:
+                event.content.text = await self.members.expand(conn, event.group_id, event.content.text)
+            except Exception:  # noqa: BLE001 - 展开失败不影响回复
+                log.debug("展开 @ 失败", exc_info=True)
         preview = event.content.text.strip()[:60] or ("[图片]" if event.content.images else "")
         self.messages_seen += 1
         if decision.should:
@@ -150,7 +160,6 @@ class ChatService:
             log.info("冷却中，跳过 %s", session)
             return
 
-        conn = self.get_connection()
         if conn is None:
             log.warning("当前没有 OneBot 连接，丢弃回复 session=%s", session)
             return
@@ -444,7 +453,9 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
     会让 KV 缓存整段失效，实测每次多花 2~3 秒重新预填充。
     """
     text = event.content.text.strip()
-    if not text:
+    if event.content.only_mentions:
+        text = "（只@了你一下，没说话）"
+    elif not text:
         if event.content.images:
             text = ""
         elif event.is_group and event.content.at_targets:
@@ -461,6 +472,7 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
                 group_id=event.group_id,
                 group_name=event.group_name,
                 speaker=event.sender_name,
+                self_id=event.self_id or None,
             )
         )
     if quoted:

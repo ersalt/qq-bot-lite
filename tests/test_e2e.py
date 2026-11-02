@@ -237,7 +237,7 @@ async def test_mention_in_reply_becomes_real_at(tmp_path: Path) -> None:
     async def chat(request: Request):
         body = await request.json()
         state.requests.append(body)
-        text = "行，@饺子 你过来看看。"
+        text = "行，at 饺子 你过来看看。"
         if not body.get("stream"):
             return {"choices": [{"message": {"content": text}}]}
 
@@ -276,6 +276,45 @@ async def test_mention_in_reply_becomes_real_at(tmp_path: Path) -> None:
     assert ats and ats[0]["data"]["qq"] == "999", f"@饺子 没解析成 at 段: {segments}"
     joined = "".join(seg["data"].get("text", "") for seg in segments)
     assert "@饺子" not in joined, "解析成功后不该再把字面 @饺子 发出去"
+
+
+@pytest.mark.asyncio
+async def test_inbound_at_expands_to_name_and_id(tmp_path: Path) -> None:
+    """收到 “@某人 叫这个 儿子” 时，模型必须看到 at 名字(QQ号)，不然不知道在叫谁。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(make_fake_llm(state), llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "inbound-at.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            event = group_event(6001, "")
+            event["message"] = [
+                {"type": "at", "data": {"qq": str(SELF_ID)}},
+                {"type": "text", "data": {"text": " 叫这个 "}},
+                {"type": "at", "data": {"qq": "999"}},
+                {"type": "text", "data": {"text": " 儿子"}},
+                {"type": "at", "data": {"qq": str(USER_ID)}},
+            ]
+            await ws.send(json.dumps(event))
+            await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    sent = json.dumps(state.requests[0]["messages"], ensure_ascii=False)
+    assert "at 饺子(999)" in sent, sent
+    assert f"at 阿伟({USER_ID})" in sent, sent
 
 
 @pytest.mark.asyncio
