@@ -119,10 +119,15 @@ async def collect_actions(ws, timeout: float = 3.0) -> list[dict]:
                 {"user_id": USER_ID, "card": "阿伟", "nickname": "阿伟"},
             ]
         elif action == "get_msg":
-            data = {
-                "message_id": payload["params"].get("message_id"),
-                "message": [{"type": "image", "data": {"url": QUOTED_IMAGE_URL, "file": "cat.png"}}],
-            }
+            asked = str(payload["params"].get("message_id"))
+            # 只有指定那条“被引用的图”才带图，其余引用返回纯文字，
+            # 免得每个引用用例都被塞进一张图。
+            segments = (
+                [{"type": "image", "data": {"url": QUOTED_IMAGE_URL, "file": "cat.png"}}]
+                if asked == "4242"
+                else [{"type": "text", "data": {"text": "之前说过的话"}}]
+            )
+            data = {"message_id": payload["params"].get("message_id"), "message": segments}
         elif action.startswith("send_"):
             actions.append(payload)
             data = {"message_id": 5000 + len(actions)}

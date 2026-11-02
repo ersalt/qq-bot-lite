@@ -18,6 +18,14 @@ from ..onebot.protocol import ImageRef
 
 log = logging.getLogger(__name__)
 
+# 本来就够小、格式又是通行的，就没必要重编码（带字的截图尤其怕 JPEG）。
+_PASSTHROUGH = {
+    "PNG": "image/png",
+    "JPEG": "image/jpeg",
+    "WEBP": "image/webp",
+    "GIF": "image/gif",
+}
+
 
 class ImageLoader:
     def __init__(self, cfg: ImagesConfig):
@@ -48,7 +56,7 @@ class ImageLoader:
             if not raw:
                 continue
             try:
-                data_url = await asyncio.to_thread(_encode_jpeg, raw, self.cfg.max_side)
+                data_url = await asyncio.to_thread(_prepare, raw, self.cfg.max_side)
             except Exception:  # noqa: BLE001 - 坏图不能拖垮回复
                 log.warning("图片解码失败: %s", ref.source, exc_info=True)
                 continue
@@ -91,18 +99,38 @@ class ImageLoader:
             return None
 
         if len(raw) > self.cfg.max_bytes:
-            log.warning("图片超过 %d 字节上限，跳过: %.120s", self.cfg.max_bytes, source)
+            log.warning(
+                "图片 %.1fMB 超过 %.1fMB 上限，跳过: %.100s",
+                len(raw) / 1048576,
+                self.cfg.max_bytes / 1048576,
+                source,
+            )
             return None
+        log.debug("图片下载完成 %.1fMB: %.100s", len(raw) / 1048576, source)
         return raw
 
 
-def _encode_jpeg(raw: bytes, max_side: int) -> str:
+def _prepare(raw: bytes, max_side: int) -> str:
+    """小图原样送，大图才缩。
+
+    截图这类带字的图，重编码成 JPEG q85 会把笔画糊掉；AstrBot 也是“只在超过
+    1MB 时压缩”。所以：本来就不大、尺寸也没超限、格式又是浏览器/模型都认的，
+    直接把原始字节转 base64 发过去。
+    """
     with Image.open(io.BytesIO(raw)) as img:
-        img = ImageOps.exif_transpose(img)
-        if img.mode not in ("RGB", "L"):
-            img = img.convert("RGB")
-        if max(img.size) > max_side:
-            img.thumbnail((max_side, max_side), Image.LANCZOS)
-        buffer = io.BytesIO()
-        img.save(buffer, format="JPEG", quality=85, optimize=True)
+        fmt = (img.format or "").upper()
+        if len(raw) <= 1_000_000 and max(img.size) <= max_side and fmt in _PASSTHROUGH:
+            mime = _PASSTHROUGH[fmt]
+            return f"data:{mime};base64," + base64.b64encode(raw).decode("ascii")
+        return _encode_jpeg(img, max_side)
+
+
+def _encode_jpeg(img: "Image.Image", max_side: int) -> str:
+    img = ImageOps.exif_transpose(img)
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    if max(img.size) > max_side:
+        img.thumbnail((max_side, max_side), Image.LANCZOS)
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=85, optimize=True)
     return "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")

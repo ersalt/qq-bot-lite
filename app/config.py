@@ -108,7 +108,10 @@ class ReplyConfig:
 class ImagesConfig:
     enabled: bool = True
     max_per_message: int = 2
-    max_bytes: int = 4_000_000
+    # QQ 群里的原图动辄 5~10MB，4MB 的上限会把正常照片全挡掉（日志里就是
+    # “图片超过 4000000 字节上限，跳过”）。反正下完就要缩到 max_side，
+    # 这里只是防内存爆掉的上限，放宽到 20MB。
+    max_bytes: int = 20_000_000
     max_side: int = 512
     history_images: int = 0
     timeout: float = 15.0
