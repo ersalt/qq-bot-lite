@@ -37,20 +37,27 @@ def scene_line(
     group_id: int | None,
     group_name: str | None,
     speaker: str,
+    speaker_id: int | None = None,
     self_id: int | None = None,
     self_name: str | None = None,
 ) -> str:
-    """拼在当前 user 消息前面，随消息变但不会污染 system 前缀。"""
+    """当前这条 user 消息前面挂的上下文块。
+
+    用 key: value 的标签格式（AstrBot 也是这么做的），比一句中文长句更好解析；
+    放在 user 消息里而不是 system，才不会破坏 KV 缓存。
+    """
     now = _dt.datetime.now()
-    if is_group:
-        where = f"群「{group_name or '未知群名'}」({group_id})"
-    else:
-        where = "私聊"
-    me = f" · 你的QQ {self_id}" if self_id else ""
     name = self_name or cfg.persona.nickname
+    who = f"{speaker} ({speaker_id})" if speaker_id else speaker
+    me = f"{name} ({self_id})" if self_id else name
+    where = f"{group_name or '未知群名'} ({group_id})" if is_group else "private"
     return (
-        f"（{now:%H:%M} 周{_WEEKDAYS[now.weekday()]} · {where} · "
-        f"和你说话的是 {speaker} · 你叫 {name}{me}）"
+        "<ctx>\n"
+        f"time: {now:%Y-%m-%d %H:%M} 周{_WEEKDAYS[now.weekday()]}\n"
+        f"group: {where}\n"
+        f"speaker: {who}\n"
+        f"self: {me}\n"
+        "</ctx>"
     )
 
 

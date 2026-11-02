@@ -518,6 +518,7 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
                 group_id=event.group_id,
                 group_name=event.group_name,
                 speaker=event.sender_name,
+                speaker_id=event.user_id,
                 self_id=event.self_id or None,
                 self_name=event.self_name,
             )
