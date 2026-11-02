@@ -143,6 +143,17 @@ class MessageStore:
             ).fetchall()
         return [_row_to_message(row) for row in reversed(rows)]
 
+    def after(self, session: str, after_id: int, limit: int) -> list[StoredMessage]:
+        """取 id > after_id 的最早 N 条，用于“锚点窗口”：窗口只在锚点推进时才变。"""
+        if limit <= 0:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM messages WHERE session=? AND id>? ORDER BY id ASC LIMIT ?",
+                (session, after_id, limit),
+            ).fetchall()
+        return [_row_to_message(row) for row in rows]
+
     def count(self, session: str | None = None) -> int:
         with self._lock:
             if session is None:

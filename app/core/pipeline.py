@@ -86,6 +86,7 @@ class ChatService:
         self.replies_sent = 0
         self._first_ms: list[float] = []
         self._group_names: dict[int, tuple[str, float]] = {}
+        self._anchors: dict[str, int] = {}
 
     # ---------- 入口 ----------
 
@@ -134,7 +135,7 @@ class ChatService:
             )
 
         # 历史要在当前消息落库前取，避免把“当前这条”重复送进模型。
-        history = self.store.recent(session, self.cfg.context.max_messages)
+        history = self._history_window(session)
         self.store.add(
             session,
             "user",
@@ -384,6 +385,26 @@ class ChatService:
 
     def _label(self, event: MessageEvent) -> str:
         return event.target_label
+
+    def _history_window(self, session: str):
+        """滑动窗口改锚点窗口，让 KV 缓存能命中。
+
+        原来每来一条消息就 recent(100)，最旧那条被挤掉，前缀整个位移，
+        llama.cpp 只能从零重新预填充（实测 1668 token ≈ 2.5 秒）。
+        这里改成按锚点取：窗口从 60% 涨到 125% 才推进一次锚点，
+        平时只是往尾部追加，前缀不动，缓存就能复用。
+        """
+        limit = max(self.cfg.context.max_messages, 20)
+        hard = int(limit * 1.25)
+        anchor = self._anchors.get(session, 0)
+        messages = self.store.after(session, anchor, hard + 1)
+        if len(messages) <= hard:
+            return messages
+
+        keep = messages[-max(int(limit * 0.6), 10) :]
+        self._anchors[session] = keep[0].id - 1
+        log.debug("推进上下文锚点 session=%s 保留 %d 条", session, len(keep))
+        return keep
 
     async def _group_label(self, event: MessageEvent) -> str:
         """群「群名」(群号)。群名走 get_group_info，缓存 10 分钟，失败 1 分钟后重试。"""
