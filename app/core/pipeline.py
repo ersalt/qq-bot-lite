@@ -219,7 +219,9 @@ class ChatService:
 
         fallback = {
             "reasoning_effort": "none",
-            "max_tokens": min(self.cfg.llm.max_tokens, 512),
+            # 正常请求可以不发 max_tokens（跟 AstrBot 一样），兜底这一路必须自己封顶，
+            # 否则无思考模式下模型可能一直说下去。
+            "max_tokens": min(self.cfg.llm.max_tokens, 512) if self.cfg.llm.max_tokens > 0 else 512,
         }
         used_fallback = False
         try:

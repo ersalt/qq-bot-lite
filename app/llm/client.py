@@ -52,11 +52,18 @@ class LLMClient:
             "messages": messages,
             "temperature": self.cfg.temperature,
             "top_p": self.cfg.top_p,
-            "max_tokens": self.cfg.max_tokens,
-            "presence_penalty": self.cfg.presence_penalty,
-            "frequency_penalty": self.cfg.frequency_penalty,
             "stream": stream,
         }
+        # 惩罚项是 0 就不发，省得请求体里堆一串没意义的 0。
+        if self.cfg.presence_penalty:
+            payload["presence_penalty"] = self.cfg.presence_penalty
+        if self.cfg.frequency_penalty:
+            payload["frequency_penalty"] = self.cfg.frequency_penalty
+        # 这两个留空就不发，跟 AstrBot 一样。抓过它的真包：它只发 model/stream/messages/
+        # tool_choice/tools，没有 max_tokens、没有 reasoning_effort —— 推理长度完全交给
+        # 模型自己按“允许说多长”决定，实测反而更快更稳。
+        if self.cfg.max_tokens > 0:
+            payload["max_tokens"] = self.cfg.max_tokens
         if self.cfg.extra_body:
             payload.update(self.cfg.extra_body)
         if self.cfg.reasoning_effort:
