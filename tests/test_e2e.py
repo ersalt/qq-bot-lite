@@ -584,3 +584,58 @@ async def test_wrong_token_is_rejected(tmp_path: Path) -> None:
         bot_server.should_exit = True
         await asyncio.sleep(0.2)
 
+
+@pytest.mark.asyncio
+async def test_history_image_is_reattached_next_turn(tmp_path: Path) -> None:
+    """上一轮发的图，下一轮问“刚才那张图”时应该还在，而不是只剩 [图片] 两个字。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = make_fake_llm(state)
+
+    @app.get("/cat.png")
+    async def cat() -> Response:
+        import io
+
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (32, 32), "blue").save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+    cfg.reply.dedupe_window = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(
+        build_app(cfg, db_path=tmp_path / "hist-img.db", plugin_data_dir=tmp_path / "pd"), app_port
+    )
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            first = group_event(9001, " 这是啥")
+            first["message"] = [
+                {"type": "at", "data": {"qq": str(SELF_ID)}},
+                {"type": "text", "data": {"text": " 这是啥"}},
+                {"type": "image", "data": {"url": f"http://127.0.0.1:{llm_port}/cat.png", "file": "cat.png"}},
+            ]
+            await ws.send(json.dumps(first))
+            await collect_actions(ws)
+            await asyncio.sleep(0.3)
+            await ws.send(json.dumps(group_event(9002, " 刚才那张图是什么颜色")))
+            await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert len(state.requests) >= 2, "应该有两轮模型请求"
+    second = json.dumps(state.requests[-1]["messages"], ensure_ascii=False)
+    assert "image_url" in second, f"第二轮没把上一轮的图带上: {second[:400]}"

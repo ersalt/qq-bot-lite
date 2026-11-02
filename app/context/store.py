@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 SCHEMA = """
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS messages (
     user_id     INTEGER,
     message_id  TEXT,
     content     TEXT    NOT NULL DEFAULT '',
+    images      TEXT    NOT NULL DEFAULT '',
     has_image   INTEGER NOT NULL DEFAULT 0,
     created_at  REAL    NOT NULL
 );
@@ -48,6 +50,8 @@ class StoredMessage:
     content: str
     has_image: bool
     created_at: float
+    # 这张消息带的图，存的是 data/images/ 下的本地副本路径
+    images: list[str] = field(default_factory=list)
 
 
 class MessageStore:
@@ -60,7 +64,15 @@ class MessageStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """老库补列：CREATE TABLE IF NOT EXISTS 不会给已有表加字段。"""
+        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(messages)")}
+        if "images" not in columns:
+            self._conn.execute("ALTER TABLE messages ADD COLUMN images TEXT NOT NULL DEFAULT ''")
+            log.info("数据库补上 messages.images 列")
 
     def close(self) -> None:
         with self._lock:
@@ -78,13 +90,24 @@ class MessageStore:
         user_id: int | None = None,
         message_id: str | None = None,
         has_image: bool = False,
+        images: list[str] | None = None,
     ) -> int:
         now = time.time()
         with self._lock:
             cur = self._conn.execute(
-                "INSERT INTO messages (session, role, speaker, user_id, message_id, content, has_image, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?)",
-                (session, role, speaker, user_id, message_id, content, int(has_image), now),
+                "INSERT INTO messages (session, role, speaker, user_id, message_id, content, has_image, images, created_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
+                (
+                    session,
+                    role,
+                    speaker,
+                    user_id,
+                    message_id,
+                    content,
+                    int(has_image),
+                    json.dumps(images or [], ensure_ascii=False),
+                    now,
+                ),
             )
             kind, _, target = session.partition(":")
             self._conn.execute(
@@ -170,6 +193,11 @@ class MessageStore:
 
 
 def _row_to_message(row: sqlite3.Row) -> StoredMessage:
+    raw_images = row["images"] if "images" in row.keys() else ""
+    try:
+        images = [str(item) for item in json.loads(raw_images or "[]")]
+    except (ValueError, TypeError):
+        images = []
     return StoredMessage(
         id=int(row["id"]),
         session=str(row["session"]),
@@ -179,4 +207,7 @@ def _row_to_message(row: sqlite3.Row) -> StoredMessage:
         content=str(row["content"] or ""),
         has_image=bool(row["has_image"]),
         created_at=float(row["created_at"]),
+        images=images,
     )
+
+

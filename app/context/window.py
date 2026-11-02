@@ -17,8 +17,8 @@ def _stamp(message: StoredMessage) -> str:
 def _render(message: StoredMessage, is_group: bool, timestamps: bool) -> str:
     text = message.content.strip()
     if not text:
-        # 纯图片/表情消息在历史里没有任何文字信息，塞 “[图片]” 只会让模型以为图坏了。
-        return ""
+        # 纯图片消息也要在历史里占一行，否则模型不知道那时候发过图。
+        return "[图片]" if getattr(message, "images", None) else ""
     if message.role == "user" and is_group:
         speaker = message.speaker or (str(message.user_id) if message.user_id else "某人")
         prefix = f"[{_stamp(message)}] " if timestamps else ""
@@ -64,7 +64,11 @@ def build_history(
         text = _render(message, is_group, cfg.timestamps)
         if not text:
             continue
-        items.append({"role": message.role, "content": text})
+        item: dict[str, Any] = {"role": message.role, "content": text}
+        if message.images:
+            # 路径留着，发请求前由 pipeline 决定要不要把图真的带上。
+            item["images"] = list(message.images)
+        items.append(item)
 
     # token 预算：从新到旧保留，超预算就丢最旧的。
     # 注意这里是"一次退到 60%"，不是一条一条挤：窗口每轮只掉一条的话前缀每轮都在动，

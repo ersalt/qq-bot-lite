@@ -113,7 +113,9 @@ class ImagesConfig:
     # 这里只是防内存爆掉的上限，放宽到 20MB。
     max_bytes: int = 20_000_000
     max_side: int = 512
-    history_images: int = 0
+    # 历史里额外附带几张图（0 = 只处理当前这条）。
+    # 2 张够答“刚才那张图里…”；每张约 250~400 token，加多了又贵又让前缀更难稳定。
+    history_images: int = 2
     timeout: float = 15.0
     trust_env: bool = False
 

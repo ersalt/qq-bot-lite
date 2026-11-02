@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import AsyncIterator, Callable
 
@@ -162,6 +163,8 @@ class ChatService:
 
         # 历史要在当前消息落库前取，避免把“当前这条”重复送进模型。
         history = self._history_window(session)
+        # 图先下载并落盘：落盘后的路径要写进历史，下一轮才答得出“刚才那张图”。
+        prepared = await self.images.prepare(event.content.images)
         self.store.add(
             session,
             "user",
@@ -170,6 +173,7 @@ class ChatService:
             user_id=event.user_id,
             message_id=event.message_id,
             has_image=bool(event.content.images),
+            images=[str(image.path) for image in prepared],
         )
         self._maybe_prune(session)
 
@@ -192,7 +196,7 @@ class ChatService:
             return
 
         async with self._lock_for(session):
-            await self._reply(conn, event, history, ctx, decision)
+            await self._reply(conn, event, history, ctx, decision, prepared)
 
     # ---------- 回复 ----------
 
@@ -203,13 +207,16 @@ class ChatService:
         history_messages: list,
         ctx: HookContext,
         decision: Decision,
+        prepared: list | None = None,
     ) -> None:
         timing = _Timing()
         history = build_history(history_messages, self.cfg.context, is_group=event.is_group)
+        history = self._attach_history_images(history)
         ctx.history = history
 
         content = await self.images.build_content(
-            _prompt_text(event, quoted=decision.reason == "quote", cfg=self.cfg), event.content.images
+            _prompt_text(event, quoted=decision.reason == "quote", cfg=self.cfg),
+            prepared if prepared is not None else [],
         )
         extra = await self.extensions.collect_system_prompt(ctx)
         system_prompt = build_system_prompt(self.cfg, self.persona.text, extra_sections=extra)
@@ -442,6 +449,36 @@ class ChatService:
                     name = None
             parts.append(f"{name}({qq})" if name else qq)
         return "、".join(parts)
+
+    def _attach_history_images(self, history: list[dict]) -> list[dict]:
+        """把最近几张历史图重新塞回它们原来的那一轮。
+
+        只带最后 `images.history_images` 张：每张 512 边长约 250~400 token，
+        而且每加一张新的、最旧的会被挤掉，前缀变一次就全量重算一次。
+        """
+        limit = self.cfg.images.history_images
+        for item in history:
+            paths = item.pop("images", None)
+            if not paths or limit <= 0:
+                continue
+            if limit <= 0:
+                continue
+            item["_pending_images"] = paths
+
+        used = 0
+        for item in reversed(history):
+            paths = item.pop("_pending_images", None)
+            if not paths or used >= limit:
+                continue
+            take = paths[: limit - used]
+            used += len(take)
+            urls = [url for raw in take if (url := ImageLoader.load_image(Path(raw)))]
+            if not urls:
+                continue
+            parts: list[dict] = [{"type": "text", "text": item["content"]}]
+            parts.extend({"type": "image_url", "image_url": {"url": url}} for url in urls)
+            item["content"] = parts
+        return history
 
     def _history_window(self, session: str):
         """滑动窗口改锚点窗口，让 KV 缓存能命中。

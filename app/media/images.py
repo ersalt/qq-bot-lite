@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import base64
 import binascii
+import hashlib
 import io
 import logging
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -27,9 +29,20 @@ _PASSTHROUGH = {
 }
 
 
+@dataclass(slots=True)
+class PreparedImage:
+    """下载并归一化过的图：data_url 直接进请求，path 用来写进历史。"""
+
+    path: Path
+    data_url: str
+
+
 class ImageLoader:
-    def __init__(self, cfg: ImagesConfig):
+    def __init__(self, cfg: ImagesConfig, cache_dir: Path | None = None):
         self.cfg = cfg
+        self.cache_dir = cache_dir or (
+            Path(__file__).resolve().parent.parent.parent / "data" / "images"
+        )
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(cfg.timeout, connect=5.0),
             follow_redirects=True,
@@ -45,35 +58,63 @@ class ImageLoader:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def build_content(self, text: str, refs: list[ImageRef]) -> str | list[dict]:
-        """有图就返回 OpenAI 多模态数组，没图（或全失败）返回纯文本。"""
-        if not self.cfg.enabled or not refs:
-            return text
+    async def prepare(self, refs: list[ImageRef]) -> list["PreparedImage"]:
+        """下载 → 归一化 → 落盘缓存，返回可以直接复用的图。
 
-        data_urls: list[str] = []
+        落盘是为了历史：QQ 的图链会过期，只有存下来的副本才能在下一轮
+        “你刚才那张图里有什么”时重新塞给模型。
+        """
+        if not self.cfg.enabled or not refs:
+            return []
+        prepared: list[PreparedImage] = []
         for ref in refs[: self.cfg.max_per_message]:
             raw = await self._fetch(ref)
             if not raw:
                 continue
             try:
-                data_url = await asyncio.to_thread(_prepare, raw, self.cfg.max_side)
+                prepared.append(await asyncio.to_thread(self._store, raw))
             except Exception:  # noqa: BLE001 - 坏图不能拖垮回复
                 log.warning("图片解码失败: %s", ref.source, exc_info=True)
-                continue
-            data_urls.append(data_url)
+        return prepared
 
-        if not data_urls:
-            note = "（对方发了图片，但没能加载出来）"
-            return f"{text}\n{note}" if text else note
+    def _store(self, raw: bytes) -> "PreparedImage":
+        """归一化后存成文件，同名同内容复用。"""
+        data_url = _prepare(raw, self.cfg.max_side)
+        header, payload = data_url.split(",", 1)
+        binary = base64.b64decode(payload)
+        digest = hashlib.sha1(binary).hexdigest()[:16]
+        suffix = ".png" if "png" in header else ".jpg"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        path = self.cache_dir / f"{digest}{suffix}"
+        if not path.exists():
+            path.write_bytes(binary)
+        return PreparedImage(path=path, data_url=data_url)
+
+    @staticmethod
+    def load_image(path: Path) -> str | None:
+        """把历史里的图重新编成 data URL。"""
+        try:
+            binary = path.read_bytes()
+        except OSError:
+            return None
+        suffix = path.suffix.lower()
+        mime = "image/png" if suffix == ".png" else "image/jpeg"
+        return f"data:{mime};base64," + base64.b64encode(binary).decode("ascii")
+
+    async def build_content(self, text: str, images: list["PreparedImage"]) -> str | list[dict]:
+        """有图就返回 OpenAI 多模态数组，没图（或全失败）返回纯文本。"""
+        if not self.cfg.enabled or not images:
+            return text
 
         parts: list[dict] = []
         if text:
             parts.append({"type": "text", "text": text})
         else:
             parts.append({"type": "text", "text": "（对方发来图片）"})
-        for url in data_urls:
-            parts.append({"type": "image_url", "image_url": {"url": url}})
-        log.info("已附带 %d 张图片", len(data_urls))
+        for image in images:
+            if image.data_url:
+                parts.append({"type": "image_url", "image_url": {"url": image.data_url}})
+        log.info("已附带 %d 张图片", len(images))
         return parts
 
     async def _fetch(self, ref: ImageRef) -> bytes | None:
