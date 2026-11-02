@@ -115,6 +115,17 @@ class ChatService:
             except Exception:  # noqa: BLE001 - 展开失败不影响回复
                 log.debug("展开 at 失败", exc_info=True)
         preview = event.content.text.strip()[:60] or ("[图片]" if event.content.images else "")
+        if event.content.images:
+            # OneBot 实现之间字段差异很大：有的只给 url，有的只给 file（本地文件名）。
+            # 图片出问题时先看这一行，才知道是没解析出来还是没下载下来。
+            log.info(
+                "图片 %d 张: %s",
+                len(event.content.images),
+                " | ".join(
+                    f"url={(ref.url or '-')[:90]} file={ref.file or '-'}" for ref in event.content.images
+                ),
+                extra={"tag": "sys"},
+            )
         self.messages_seen += 1
         at_field = await self._at_field(conn, event)
         if decision.should:
@@ -507,7 +518,8 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
         text = "（只@了你一下，没说话）"
     elif not text:
         if event.content.images:
-            text = ""
+            # 图没加载出来也要让模型知道“对方发了图”，否则它会直接答“我看不到图”。
+            text = "（对方发来一张图片）"
         elif event.is_group and event.content.at_targets:
             text = "（只@了你一下，没说话）"
         else:

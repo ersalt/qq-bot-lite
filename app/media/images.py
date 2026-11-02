@@ -26,6 +26,12 @@ class ImageLoader:
             timeout=httpx.Timeout(cfg.timeout, connect=5.0),
             follow_redirects=True,
             trust_env=cfg.trust_env,
+            # QQ 图床对裸请求有时直接 403，带个 UA 和 referer 更稳。
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+                "Referer": "https://q.qq.com/",
+            },
         )
 
     async def aclose(self) -> None:
