@@ -416,6 +416,7 @@ function watchSections() {
 }
 
 $("save").addEventListener("click", save);
+$("form").addEventListener("submit", (event) => event.preventDefault());
 $("reload").addEventListener("click", () => {
   load().then(watchSections);
   $("restart-notice").hidden = true;
