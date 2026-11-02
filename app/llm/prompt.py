@@ -67,12 +67,17 @@ def build_system_prompt(
 
 
 def merge_adjacent(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """合并连续同角色消息，模板更稳、token 更省。"""
+    """只合并连续的同角色 *机器人* 消息。
+
+    群聊里连续十几条不同人的发言如果被并成一个 user 轮次，模型会把最后说话的人
+    当成这一大段的作者，出现“把 A 说的话算到 B 头上”。assistant 是自己的话，
+    合并无害；user 一律保留独立轮次。
+    """
     merged: list[dict[str, Any]] = []
     for msg in messages:
         if (
             merged
-            and merged[-1]["role"] == msg["role"]
+            and merged[-1]["role"] == msg["role"] == "assistant"
             and isinstance(merged[-1]["content"], str)
             and isinstance(msg["content"], str)
         ):

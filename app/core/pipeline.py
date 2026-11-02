@@ -266,7 +266,10 @@ class ChatService:
 
         self._cooldown[event.session_key] = time.time()
         if collected:
-            self._store_reply(event, collected)
+            # 写回上下文的是“实际发出去的文本”（at 段已渲染成 at 名字(QQ)），
+            # 不是模型原文。否则历史里会保留模型写的 @，下一轮它会照着学。
+            texts = result.texts if result is not None and result.texts else collected
+            self._store_reply(event, texts)
         elif result is None or result.sent == 0:
             log.warning(
                 "重答后仍然没有正文，这条没有发出去 | %s | %s | msg=%s",

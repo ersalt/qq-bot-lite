@@ -31,6 +31,8 @@ class SendResult:
     reply_to: str | None = None
     at_targets: list[str] = field(default_factory=list)
     message_ids: list[str] = field(default_factory=list)
+    # 实际发出去的文本（at 段已渲染成 at 名字(QQ)），用于写回上下文
+    texts: list[str] = field(default_factory=list)
 
 
 def _message_id(data: Any) -> str | None:
@@ -84,6 +86,8 @@ class ReplySender:
                     on_sent(message_id)
             # 打的是“实际发出去的段”，不是模型原始输出：at 段要显示成 at 名字(QQ)
             # 否则日志里会冒出模型写的 @，和真实发送内容对不上。
+            sent_text = await self._render_sent(conn, event, segments)
+            result.texts.append(sent_text)
             log.info(
                 "→ %s | %s(%s) | msg=%s | 回复 %s | %s",
                 event.target_label,
@@ -91,7 +95,7 @@ class ReplySender:
                 event.self_id,
                 message_id or "-",
                 event.sender_label,
-                await self._render_sent(conn, event, segments),
+                sent_text,
                 extra={"tag": "out"},
             )
             first = False
