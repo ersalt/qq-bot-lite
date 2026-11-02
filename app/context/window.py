@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 from typing import Any
 
 from ..config import ContextConfig
@@ -9,24 +10,34 @@ from ..llm.tokens import estimate_text_tokens
 from .store import StoredMessage
 
 
-def _render(message: StoredMessage, is_group: bool) -> str:
+def _stamp(message: StoredMessage) -> str:
+    return _dt.datetime.fromtimestamp(message.created_at).strftime("%H:%M")
+
+
+def _render(message: StoredMessage, is_group: bool, timestamps: bool) -> str:
     text = message.content.strip()
     if not text:
         # 纯图片/表情消息在历史里没有任何文字信息，塞 “[图片]” 只会让模型以为图坏了。
         return ""
     if message.role == "user" and is_group:
         speaker = message.speaker or (str(message.user_id) if message.user_id else "某人")
-        return f"{speaker}: {text}"
+        prefix = f"[{_stamp(message)}] " if timestamps else ""
+        return f"{prefix}{speaker}: {text}"
     return text
 
 
-def build_history(messages: list[StoredMessage], cfg: ContextConfig, *, is_group: bool) -> list[dict[str, Any]]:
+def build_history(
+    messages: list[StoredMessage],
+    cfg: ContextConfig,
+    *,
+    is_group: bool,
+) -> list[dict[str, Any]]:
     """messages 为从旧到新的顺序，返回同样顺序的 chat messages（不含当前这条）。"""
     items: list[dict[str, Any]] = []
     for message in messages:
         if message.role == "assistant" and not cfg.include_bot_replies:
             continue
-        text = _render(message, is_group)
+        text = _render(message, is_group, cfg.timestamps)
         if not text:
             continue
         items.append({"role": message.role, "content": text})

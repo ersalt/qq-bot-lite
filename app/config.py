@@ -57,6 +57,8 @@ class ContextConfig:
     max_tokens: int = 6000
     include_bot_replies: bool = True
     merge_same_role: bool = True
+    # 历史行前面加 [HH:MM]，模型才知道“刚才/两小时前”
+    timestamps: bool = True
 
 
 @dataclass(slots=True)
