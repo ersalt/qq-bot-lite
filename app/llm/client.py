@@ -50,10 +50,13 @@ class LLMClient:
         payload: dict[str, Any] = {
             "model": self.cfg.model,
             "messages": messages,
-            "temperature": self.cfg.temperature,
-            "top_p": self.cfg.top_p,
             "stream": stream,
         }
+        # 采样参数留空就不发，交给 LM Studio 里模型自己的设置。
+        if self.cfg.temperature is not None:
+            payload["temperature"] = self.cfg.temperature
+        if self.cfg.top_p is not None:
+            payload["top_p"] = self.cfg.top_p
         # 惩罚项是 0 就不发，省得请求体里堆一串没意义的 0。
         if self.cfg.presence_penalty:
             payload["presence_penalty"] = self.cfg.presence_penalty

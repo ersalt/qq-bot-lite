@@ -7,7 +7,8 @@
 
 ### 变更
 
-- 请求体瘦身，对齐 AstrBot：`[llm] max_tokens` 默认 0、`reasoning_effort` 默认空，两个都不再发送；惩罚项为 0 时也不发。抓包确认 AstrBot 只发 `model/stream/messages/tool_choice/tools`，回复长度靠人设里的“50 字以内”约束，实测比塞配额更稳。
+- 请求体瘦身，对齐 AstrBot：`[llm] max_tokens` 默认 0、`reasoning_effort` 默认空、`temperature`/`top_p` 默认留空、惩罚项为 0 时不发。抓包确认 AstrBot 只发 `model/stream/messages/tool_choice/tools`，回复长度靠人设里的“50 字以内”约束，实测比塞配额更稳。现在实发只有 `model` / `messages` / `stream`。
+- `[llm] stream` 默认改为 false（整段生成完再发）。一条回复总共 3 秒左右，提前吐半句收益很小；代价是 `thinking_budget` 失效——非流式拿不到思考增量，数不了也掐不断，所以它默认也改成 0。
 - 群里回复默认不再 @ 被回复人（`at_sender` 默认由 true 改为 false）。v0.1.0 每条回复都带 @，刷屏。
 - 发送日志拆成两行：`→` 行是消息内容（和入站同构），`·` 行是发送属性（段数/引用/@/延迟/token）。
 - 新增 `[llm] thinking_budget`，默认 600：思考超过预算就掐断并改用无思考模式重答。

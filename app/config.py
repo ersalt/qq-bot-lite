@@ -39,21 +39,22 @@ class LLMConfig:
     base_url: str = "http://127.0.0.1:1234/v1"
     api_key: str = "lm-studio"
     model: str = "qwen3.8-27b"
-    temperature: float = 0.8
-    top_p: float = 0.95
+    # 采样参数。None = 不发送，用 LM Studio 里模型自己的设置（AstrBot 也是这样）。
+    # 想强制指定就填数字，比如 temperature = 0.8。
+    temperature: float | None = None
+    top_p: float | None = None
     max_tokens: int = 0
     presence_penalty: float = 0.0
     frequency_penalty: float = 0.0
     timeout: float = 120.0
-    stream: bool = True
+    # 流式：关掉就是等整段生成完再发。本地 3 秒就能出全文，分段前没必要早发半句。
+    stream: bool = False
     # LM Studio 的思考档位：none / low / medium / high，留空 = 不发送（用模型模板默认）。
     # AstrBot 就是不发的，抓包确认过。填了就按填的发。
     reasoning_effort: str = ""
-    # 思考超过这么多 token 就掐断，改用无思考模式重答（0 = 不限制）。
-    # 实测模型在这个群的上下文里常常自然收尾在 600~700 token；原来设 600 等于
-    # 在终点线前掐断：扔掉十几秒思考，再花 2.5 秒重发一次请求（LM Studio 每请求
-    # 有固定的 2.5 秒开销），换来的还是一句无思考的敷衍。所以留到 800 再掐。
-    thinking_budget: int = 800
+    # 思考超过这么多 token 就掐断连接，改用无思考模式重答（0 = 不限制）。
+    # **只在 stream = true 时有效**：非流式拿不到思考增量，数不了也掐不断。
+    thinking_budget: int = 0
     # 全局同时在飞的请求数上限，对应 LM Studio 的并行槽位数（实测它有 4 个槽位）。
     # 同一会话由 per-session 锁保证只有一条，这里限的是跨会话总数。
     max_concurrency: int = 4
