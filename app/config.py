@@ -48,8 +48,9 @@ class LLMConfig:
     stream: bool = True
     # 思考超过这么多 token 就掐断，改用无思考模式重答（0 = 不限制）
     thinking_budget: int = 600
-    # 同时向模型发起的请求数上限。必须 1：多槽位并行会让 KV 缓存互相失效，还抢显存。
-    max_concurrency: int = 1
+    # 全局同时在飞的请求数上限，对应 LM Studio 的并行槽位数（实测它有 4 个槽位）。
+    # 同一会话由 per-session 锁保证只有一条，这里限的是跨会话总数。
+    max_concurrency: int = 4
     extra_body: dict[str, Any] = field(default_factory=dict)
 
 
