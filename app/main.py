@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import logging.handlers
+import signal
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from . import __version__
@@ -213,6 +214,25 @@ def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None
             }
         )
 
+    @app.post("/api/shutdown")
+    async def shutdown(request: Request) -> JSONResponse:
+        """本机调用：让进程体面退出（exit 0），黑窗才会自己关掉。
+
+        强行 taskkill 的话 start.cmd 会看到非 0 退出码，停在 “按任意键” 上，
+        重启几次就攒一堆空窗口。
+        """
+        host = (request.client.host if request.client else "") or ""
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(status_code=403, detail="只允许本机调用")
+        log.info("收到本机停机请求，准备退出", extra={"tag": "sys"})
+
+        async def _stop() -> None:
+            await asyncio.sleep(0.2)
+            signal.raise_signal(signal.SIGINT)
+
+        asyncio.create_task(_stop())
+        return JSONResponse({"ok": True})
+
     mount_web(app, cfg, persona, config_path or CONFIG_PATH)
 
     return app
@@ -221,4 +241,5 @@ def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None
 def create_app(config_path: Path | None = None) -> FastAPI:
     cfg = load_config(config_path)
     return build_app(cfg, config_path=config_path)
+
 

@@ -7,6 +7,7 @@ const state = {
   dirty: new Set(),
   saving: false,
   restart: [],
+  active: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -107,21 +108,21 @@ function render() {
   nav.textContent = "";
 
   for (const section of state.schema) {
-    const anchor = el("a");
-    anchor.href = `#sec-${section.id}`;
-    anchor.dataset.section = section.id;
-    anchor.append(el("span", null, section.title));
-    const dot = el("span", "dirty-dot");
-    anchor.append(dot);
-    nav.append(anchor);
+    const chip = el("a", "chip");
+    chip.href = `#${section.id}`;
+    chip.dataset.section = section.id;
+    chip.append(el("span", null, section.title));
+    chip.append(el("span", "dirty-dot"));
+    chip.addEventListener("click", (event) => {
+      event.preventDefault();
+      showSection(section.id);
+    });
+    nav.append(chip);
 
-    const block = el("section");
+    const block = el("section", "panel");
     block.id = `sec-${section.id}`;
     block.dataset.section = section.id;
-    const head = el("div", "sec-head");
-    head.append(el("h2", null, section.title));
-    if (section.desc) head.append(el("p", null, section.desc));
-    block.append(head);
+    block.hidden = true;
 
     const grid = el("div", "grid");
     for (const field of section.fields) {
@@ -131,6 +132,43 @@ function render() {
     extras(section, block);
     host.append(block);
   }
+
+  showSection(validSection(state.active) || state.schema[0]?.id);
+}
+
+function validSection(id) {
+  return state.schema.some((section) => section.id === id) ? id : null;
+}
+
+function savedSection() {
+  try {
+    return validSection(localStorage.getItem("qqbotlite-section"));
+  } catch (error) {
+    return null;
+  }
+}
+
+function showSection(id) {
+  const target = validSection(id);
+  if (!target) return;
+  state.active = target;
+
+  for (const panel of document.querySelectorAll("#sections > section")) {
+    panel.hidden = panel.dataset.section !== target;
+  }
+  for (const chip of document.querySelectorAll("#nav a")) {
+    chip.classList.toggle("active", chip.dataset.section === target);
+  }
+
+  const section = state.schema.find((item) => item.id === target);
+  $("page-title").textContent = section ? section.title : "设置";
+  $("page-sub").textContent = section?.desc || "改动即时写回 config/config.toml";
+
+  try {
+    localStorage.setItem("qqbotlite-section", target);
+    history.replaceState(null, "", `#${target}`);
+  } catch (error) {}
+  window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
 }
 
 /* ---------- 各组的额外挂件 ---------- */
@@ -371,8 +409,8 @@ async function load() {
     state.values = { ...payload.values };
     state.original = { ...payload.values };
     state.dirty.clear();
-    $("page-title").textContent = "设置";
-    $("page-sub").textContent = `改动即时写回 config/config.toml · ${payload.sections.length} 组共 ${Object.keys(payload.values).length} 项`;
+    state.active = validSection(location.hash.slice(1)) || savedSection() || payload.sections[0]?.id;
+    $("foot-meta").textContent = ` · ${payload.sections.length} 组 ${Object.keys(payload.values).length} 项`;
     render();
     refreshDirtyUi();
   } catch (error) {
@@ -421,40 +459,7 @@ async function pollStatus() {
 }
 
 function watchSections() {
-  const sections = Array.from(document.querySelectorAll(".form section"));
-  if (!sections.length) return;
-
-  const setActive = (id) => {
-    for (const anchor of document.querySelectorAll("#nav a")) {
-      anchor.classList.toggle("active", anchor.dataset.section === id);
-    }
-  };
-
-  let ticking = false;
-  const update = () => {
-    ticking = false;
-    const threshold = 116;
-    let current = sections[0].dataset.section;
-    for (const section of sections) {
-      if (section.getBoundingClientRect().top <= threshold) current = section.dataset.section;
-    }
-    setActive(current);
-  };
-
-  window.addEventListener(
-    "scroll",
-    () => {
-      if (ticking) return;
-      ticking = true;
-      requestAnimationFrame(update);
-    },
-    { passive: true },
-  );
-  window.addEventListener("resize", update, { passive: true });
-  for (const anchor of document.querySelectorAll("#nav a")) {
-    anchor.addEventListener("click", () => setActive(anchor.dataset.section));
-  }
-  update();
+  // 分页之后不再需要滚动联动，保留空实现让老调用点不用改。
 }
 
 $("save").addEventListener("click", save);
