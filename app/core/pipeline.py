@@ -19,6 +19,7 @@ from ..media.images import ImageLoader
 from ..onebot.client import OneBotConnection
 from ..onebot.events import MessageEvent
 from ..onebot.members import MemberDirectory
+from ..onebot.protocol import ImageRef
 from ..persona import Persona
 from ..reply.segments import Segmenter
 from ..reply.sender import ReplySender, clean_text
@@ -106,6 +107,16 @@ class ChatService:
 
         group_label = await self._group_label(event)
         conn = self.get_connection()
+        # 引用了一张图、但当前消息本身只有文字：把那张图取过来。
+        # 群里常用的姿势是“先发图，再引用那张图说一句”，不取的话模型只会回“图呢？”。
+        if conn is not None and not event.content.images and event.reply_id:
+            try:
+                quoted = await self._quoted_images(conn, event.reply_id)
+                if quoted:
+                    event.content.images.extend(quoted)
+                    log.info("从引用里取到 %d 张图片 reply=%s", len(quoted), event.reply_id, extra={"tag": "sys"})
+            except Exception:  # noqa: BLE001 - 取不到就当作没有图
+                log.debug("取引用图片失败 reply=%s", event.reply_id, exc_info=True)
         if conn is not None and event.is_group and event.group_id is not None:
             # 把 at 123456 还原成 at 群名片(123456)，模型才知道在叫谁
             try:
@@ -446,6 +457,30 @@ class ChatService:
         log.debug("推进上下文锚点 session=%s 保留 %d 条", session, len(keep))
         return keep
 
+    async def _quoted_images(self, conn: OneBotConnection, reply_id: str) -> list:
+        """用 get_msg 把被引用那条消息里的图捞出来。拿不到就返回空。"""
+        try:
+            message_id: object = int(reply_id) if reply_id.lstrip("-").isdigit() else reply_id
+        except (TypeError, ValueError):
+            message_id = reply_id
+        data = await conn.call_action("get_msg", {"message_id": message_id}, 5.0)
+        if not isinstance(data, dict):
+            return []
+        segments = data.get("message")
+        if not isinstance(segments, list):
+            return []
+        images = []
+        for segment in segments:
+            if not isinstance(segment, dict) or segment.get("type") != "image":
+                continue
+            payload = segment.get("data") or {}
+            url, file = payload.get("url"), payload.get("file")
+            if url or file:
+                images.append(ImageRef(url=url, file=file, summary=payload.get("summary")))
+            if len(images) >= self.cfg.images.max_per_message:
+                break
+        return images
+
     async def _group_label(self, event: MessageEvent) -> str:
         """群「群名」(群号)。群名走 get_group_info，缓存 10 分钟，失败 1 分钟后重试。"""
         if not event.is_group or event.group_id is None:
@@ -544,4 +579,5 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
     if text:
         lines.append(text)
     return "\n".join(lines)
+
 

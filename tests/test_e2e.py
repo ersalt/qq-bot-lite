@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from websockets.asyncio.client import connect
 
 from app.config import Config
@@ -26,6 +26,9 @@ GROUP_ID = 777888
 USER_ID = 123456
 
 REPLY_TEXT = "在的在的。刚才在发呆，没看见你说话。有事就说，别磨叽。"
+
+# get_msg 假装被引用那条消息里有一张图；具体地址由用到它的用例改成能访问的本地地址。
+QUOTED_IMAGE_URL = "https://example.invalid/cat.png"
 
 
 def free_port() -> int:
@@ -78,8 +81,7 @@ async def start_server(app: FastAPI, port: int) -> uvicorn.Server:
     return server
 
 
-def group_event(message_id: int, text: str) -> dict:
-    return {
+def group_event(message_id: int, text: str) -> dict:    return {
         "post_type": "message",
         "message_type": "group",
         "sub_type": "normal",
@@ -116,6 +118,11 @@ async def collect_actions(ws, timeout: float = 3.0) -> list[dict]:
                 {"user_id": 999, "card": "饺子", "nickname": "饺子"},
                 {"user_id": USER_ID, "card": "阿伟", "nickname": "阿伟"},
             ]
+        elif action == "get_msg":
+            data = {
+                "message_id": payload["params"].get("message_id"),
+                "message": [{"type": "image", "data": {"url": QUOTED_IMAGE_URL, "file": "cat.png"}}],
+            }
         elif action.startswith("send_"):
             actions.append(payload)
             data = {"message_id": 5000 + len(actions)}
@@ -375,6 +382,60 @@ async def test_inbound_at_expands_to_name_and_id(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_quoted_image_is_fetched_and_sent_to_model(tmp_path: Path) -> None:
+    """引用一张图再说“识图”：要能用 get_msg 把那张图取过来送进模型。"""
+    global QUOTED_IMAGE_URL
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = make_fake_llm(state)
+
+    @app.get("/cat.png")
+    async def cat() -> Response:
+        import io
+
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (32, 32), "red").save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    old_url = QUOTED_IMAGE_URL
+    QUOTED_IMAGE_URL = f"http://127.0.0.1:{llm_port}/cat.png"
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "quote-img.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            event = group_event(7001, " 识图")
+            event["message"] = [
+                {"type": "reply", "data": {"id": "4242"}},
+                {"type": "at", "data": {"qq": str(SELF_ID)}},
+                {"type": "text", "data": {"text": " 识图"}},
+            ]
+            await ws.send(json.dumps(event))
+            await collect_actions(ws)
+    finally:
+        QUOTED_IMAGE_URL = old_url
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert state.requests, "应该有模型请求"
+    body = json.dumps(state.requests[0]["messages"], ensure_ascii=False)
+    assert "image_url" in body, f"引用里的图没送进模型: {body[:400]}"
+
+
+@pytest.mark.asyncio
 async def test_bare_at_without_text_still_replies(tmp_path: Path) -> None:
     """只 @ 不说话也算点名，这是群里最常见的一种“叫一下”。"""
     state = FakeState()
@@ -517,3 +578,4 @@ async def test_wrong_token_is_rejected(tmp_path: Path) -> None:
     finally:
         bot_server.should_exit = True
         await asyncio.sleep(0.2)
+
