@@ -14,7 +14,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from . import __version__
-from .config import ROOT, Config, load_config
+from .config import CONFIG_PATH, ROOT, Config, load_config
 from .console import ConsoleFormatter, enable_ansi, print_banner, set_title, start_console_watchdog
 from .context.store import MessageStore
 from .core.pipeline import ChatService
@@ -25,6 +25,7 @@ from .onebot.members import MemberDirectory
 from .onebot.server import OneBotServer
 from .persona import Persona
 from .reply.sender import ReplySender
+from .web.routes import mount_web
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ def _install_loop_error_filter() -> None:
     loop.set_exception_handler(handler)
 
 
-def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
+def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None = None) -> FastAPI:
     store = MessageStore(db_path or (ROOT / "data" / "app.db"))
     persona = Persona(cfg)
     llm = LLMClient(cfg.llm)
@@ -204,58 +205,20 @@ def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
                 "port": cfg.server.port,
                 "extensions": cfg.extensions.enabled,
                 "db": store.stats(),
+                "counters": {
+                    "received": service.messages_seen,
+                    "replied": service.replies_sent,
+                    "first_ms": round(service.average_first_ms, 0),
+                },
             }
         )
 
-    @app.get("/", response_class=HTMLResponse)
-    async def index() -> str:
-        stats = store.stats()
-        online = server.connection is not None
-        return _STATUS_PAGE.format(
-            version=__version__,
-            connected="在线" if online else "未连接",
-            conn_cls="ok" if online else "off",
-            self_id=server.self_id or "-",
-            model=cfg.llm.model,
-            base_url=cfg.llm.base_url,
-            ws=f"{cfg.server.host}:{cfg.server.port}{cfg.onebot.path}",
-            messages=stats["messages"],
-            sessions=stats["sessions"],
-            context_messages=cfg.context.max_messages,
-            context_tokens=cfg.context.max_tokens,
-            extensions=", ".join(cfg.extensions.enabled) or "无",
-        )
+    mount_web(app, cfg, persona, config_path or CONFIG_PATH)
 
     return app
 
 
-_STATUS_PAGE = """<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>qq-bot-lite</title>
-<style>
- body{{background:#111318;color:#d7dae0;font:14px/1.7 -apple-system,"Segoe UI",sans-serif;margin:0;padding:40px}}
- main{{max-width:720px;margin:0 auto}}
- h1{{font-size:18px;font-weight:600;margin:0 0 4px}}
- .sub{{color:#7d838f;margin-bottom:24px}}
- table{{border-collapse:collapse;width:100%}}
- td{{padding:8px 0;border-bottom:1px solid #22262e;vertical-align:top}}
- td:first-child{{color:#7d838f;width:180px}}
- code{{background:#1a1e26;padding:1px 6px;border-radius:4px;color:#9ecbff}}
- .ok{{color:#4ade80}} .off{{color:#f87171}}
-</style></head><body><main>
-<h1>qq-bot-lite <span class="sub">v{version}</span></h1>
-<div class="sub">QQ ↔ SnowLuma ↔ 本项目 ↔ LM Studio</div>
-<table>
- <tr><td>OneBot 连接</td><td class="{conn_cls}">{connected}（self_id: {self_id}）</td></tr>
- <tr><td>反向 WS 地址</td><td><code>ws://{ws}</code></td></tr>
- <tr><td>模型</td><td><code>{model}</code> @ {base_url}</td></tr>
- <tr><td>上下文</td><td>最近 {context_messages} 条 / 约 {context_tokens} tokens</td></tr>
- <tr><td>扩展</td><td>{extensions}</td></tr>
- <tr><td>数据库</td><td>{messages} 条消息 / {sessions} 个会话</td></tr>
-</table>
-<p class="sub">配置见 <code>config/config.toml</code>，改完重启生效。</p>
-</main></body></html>"""
-
-
 def create_app(config_path: Path | None = None) -> FastAPI:
     cfg = load_config(config_path)
-    return build_app(cfg)
+    return build_app(cfg, config_path=config_path)
+

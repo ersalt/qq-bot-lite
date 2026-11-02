@@ -393,6 +393,14 @@ class ChatService:
             self._locks[session] = lock
         return lock
 
+    @property
+    def average_first_ms(self) -> float:
+        return sum(self._first_ms) / len(self._first_ms) if self._first_ms else 0.0
+
+    @property
+    def uptime_seconds(self) -> float:
+        return max(time.time() - self.started_at, 0.0)
+
     def stats_line(self, *, connected: bool) -> str:
         uptime = max(time.time() - self.started_at, 0)
         hours, rem = divmod(int(uptime), 3600)

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qq-bot-lite 设置</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark">qq<span>·</span>bot<span>·</span>lite</div>
+      <div class="brand-ver">v__VERSION__</div>
+    </div>
+
+    <nav class="nav" id="nav" aria-label="设置分组"></nav>
+
+    <div class="side-foot">
+      <div class="conn" id="conn">
+        <span class="dot" id="conn-dot"></span>
+        <span id="conn-text">连接状态读取中</span>
+      </div>
+      <div class="stat-line" id="stat-line"></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <h1 id="page-title">设置</h1>
+        <p class="topbar-sub" id="page-sub">改动即时写回 config/config.toml</p>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost" id="reload" type="button">放弃改动</button>
+        <button class="btn btn-primary" id="save" type="button" disabled>保存</button>
+      </div>
+    </header>
+
+    <div class="notice" id="restart-notice" hidden></div>
+
+    <form id="form" class="form" autocomplete="off">
+      <div id="sections"></div>
+    </form>
+
+    <footer class="foot">
+      <span>配置来源 <code>config/config.toml</code></span>
+      <span id="foot-state">未加载</span>
+    </footer>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="/static/app.js" defer></script>
+</body>
+</html>
