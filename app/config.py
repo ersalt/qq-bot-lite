@@ -46,8 +46,11 @@ class LLMConfig:
     frequency_penalty: float = 0.0
     timeout: float = 120.0
     stream: bool = True
-    # 思考超过这么多 token 就掐断，改用无思考模式重答（0 = 不限制）
-    thinking_budget: int = 600
+    # 思考超过这么多 token 就掐断，改用无思考模式重答（0 = 不限制）。
+    # 实测模型在这个群的上下文里常常自然收尾在 600~700 token；原来设 600 等于
+    # 在终点线前掐断：扔掉十几秒思考，再花 2.5 秒重发一次请求（LM Studio 每请求
+    # 有固定的 2.5 秒开销），换来的还是一句无思考的敷衍。所以留到 800 再掐。
+    thinking_budget: int = 800
     # 全局同时在飞的请求数上限，对应 LM Studio 的并行槽位数（实测它有 4 个槽位）。
     # 同一会话由 per-session 锁保证只有一条，这里限的是跨会话总数。
     max_concurrency: int = 4
