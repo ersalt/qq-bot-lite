@@ -1,0 +1,7 @@
+# 统一换行符：仓库内 LF，Windows 批处理检出为 CRLF
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.gguf binary
