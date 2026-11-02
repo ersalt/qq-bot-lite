@@ -29,7 +29,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path]:
     path = tmp_path / "config.toml"
     path.write_text(BASE_TOML, encoding="utf-8")
     cfg = load_config(path)
-    app = build_app(cfg, db_path=tmp_path / "web.db", config_path=path)
+    app = build_app(cfg, db_path=tmp_path / "web.db", config_path=path, plugin_data_dir=tmp_path / "plugin_data")
     return TestClient(app), path
 
 
@@ -159,7 +159,7 @@ def test_plugin_settings_roundtrip(tmp_path: Path) -> None:
         assert bad.status_code == 400
 
     # 落在配置文件同目录的 plugins.toml 里
-    text = (tmp_path / "plugins.toml").read_text(encoding="utf-8")
+    text = (tmp_path / "plugin_data" / "stats" / "settings.toml").read_text(encoding="utf-8")
     assert "window_hours = 48" in text
     assert "show_latency = false" in text
 
@@ -178,3 +178,4 @@ def test_plugin_toggle_writes_config(tmp_path: Path) -> None:
         off = client.post("/api/plugins/stats/enabled", json={"enabled": False})
         assert off.status_code == 200
     assert "enabled = []" in path.read_text(encoding="utf-8")
+

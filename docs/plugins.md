@@ -1,56 +1,96 @@
 # 插件
 
-`app/extensions/` 下的每个 `.py` 就是一个插件，文件名就是插件名。放进去之后
-设置面板的「插件」页会自动出现一张卡，不用注册、不用改主配置的代码。
+插件放在项目根的 `plugins/`，每个插件一个文件夹；运行期数据写到
+`data/plugin_data/<插件名>/`。两边分开放，升级或搬家时不会互相踩。
+
+```
+plugins/
+  stats/                 一个插件一个目录，目录名就是插件名
+    plugin.toml          元数据和设置项声明（不导入代码就能读）
+    plugin.py            代码：setup(ctx) 和可选的 router
+data/
+  plugin_data/
+    stats/
+      settings.toml      设置面板写的那几个键
+      counter.json       插件自己存的东西
+```
+
+和 AstrBot 一样的分法：插件目录归插件，数据目录归运行期。
+**插件本体入库，`data/plugin_data/` 里除了 `settings.toml` 一律不入库。**
 
 ## 最小插件
 
+`plugins/ping/plugin.toml`：
+
+```toml
+title = "回音"
+description = "被叫到的时候顺带回一句。"
+version = "0.1.0"
+author = "你"
+```
+
+`plugins/ping/plugin.py`：
+
 ```python
-# app/extensions/ping.py
-MANIFEST = {
-    "title": "回音",
-    "description": "被叫到的时候顺带回一句。",
-    "version": "0.1.0",
-    "author": "你",
-}
+from app.pluginkit.manifest import PluginContext
+from app.pluginkit.registry import Extension, HookContext
+
 
 class Ping(Extension):
     name = "ping"
 
-    async def system_prompt(self, ctx):
+    async def system_prompt(self, ctx: HookContext):
         return None
 
-def setup(ctx):
+
+def setup(ctx: PluginContext) -> Ping:
     return Ping()
 ```
 
-## 会被发现的约定
+放进 `plugins/`，设置面板的「插件」页就会多一张卡，不用注册、不用重启配置。
 
-| 名字 | 必需 | 作用 |
-|---|---|---|
-| `MANIFEST` | 是 | 元数据；缺了这张卡会显示成红色错误卡，而不是消失 |
-| `setup(ctx)` | 否 | 返回扩展实例；也可以用 `class Extension` 子类代替 |
-| `router` | 否 | 一个 `APIRouter`，挂到 `/plugins/<名字>`，面板上的「打开面板」就跳到这 |
+## plugin.toml 的全部键
 
-`MANIFEST` 支持的键：
+| 键 | 作用 |
+|---|---|
+| `title` | 卡片标题，缺省用目录名 |
+| `description` | 卡片说明，最多显示三行 |
+| `version` / `author` | 卡片上的小字 |
+| `panel` | 有值才显示「打开面板」，一般写 `/plugins/<名字>` |
+| `[[config]]` | 有值才显示「设置」，每个表就是一个字段 |
 
-```python
-{
-  "title": "运行统计",          # 卡片标题，缺省用文件名
-  "description": "...",        # 卡片说明，最多显示三行
-  "version": "0.1.0",
-  "author": "内建",
-  "panel": "/plugins/stats",   # 有值才显示「打开面板」
-  "config": [                  # 有值才显示「设置」
-      {"key": "window_hours", "label": "统计窗口（小时）", "type": "number",
-       "min": 1, "max": 720, "default": 24, "help": "说明文字"},
-      {"key": "show_latency", "label": "显示延迟", "type": "bool", "default": True},
-  ],
-}
+`[[config]]` 的字段：
+
+```toml
+[[config]]
+key = "window_hours"        # 存进 settings.toml 的键名
+label = "统计窗口（小时）"
+type = "number"             # number / bool / text
+min = 1
+max = 720
+step = 1
+default = 24
+help = "面板上那句“最近 N 小时”就是它"
 ```
 
-`config` 里每个字段的 `key` 会原样进 `config/plugins.toml` 的 `[插件名]` 段，
-插件里用 `ctx.settings.get(key)` 读。
+**元数据刻意放在 TOML 而不是代码里**：面板列一遍插件时不会执行任何插件代码，
+装坏的插件只会显示成一张红卡并写明原因，不会拖垮整个列表。
+
+## 代码约定
+
+| 名字 | 必需 | 说明 |
+|---|---|---|
+| `setup(ctx)` | 否 | 返回扩展实例；返回 `None` 也合法（只有面板没有钩子的插件） |
+| `router` | 否 | 一个 `APIRouter`，挂到 `/plugins/<名字>` |
+
+`ctx` 是 `PluginContext`：
+
+- `ctx.name`：插件名
+- `ctx.settings`：`settings.toml` 合并默认值后的字典，改设置会同步刷新
+- `ctx.data_dir`：`data/plugin_data/<名字>/`，已经建好，随你写
+- `ctx.services`：`{"store": 消息库, "service": ChatService, "cfg": 配置}`
+
+给得少是故意的。插件想要更多能力，说明那东西该做成核心功能。
 
 ## 钩子
 
@@ -63,25 +103,15 @@ def setup(ctx):
 | `after_reply(ctx, text)` | 文本要发出去之前 | 改写、过滤 |
 
 `ctx` 是 `HookContext`，带 `event`（消息事件）、`session_key`、`is_group`、`history`。
+**钩子抛异常只记日志，绝不影响聊天主流程。**
 
-**约定：钩子抛异常只记日志，绝不影响聊天主流程。** 这条在注册表里强制了。
+## 启停
 
-## 插件拿到什么
-
-`setup(ctx)` 的 `ctx` 是 `PluginContext`：
-
-- `ctx.name`：插件名
-- `ctx.settings`：`config/plugins.toml` 里这一段合并默认值后的字典
-- `ctx.services`：`{"store": 消息库, "service": ChatService, "cfg": 配置}`
-
-给得很少是故意的。插件想要更多能力，就说明该把它做成核心功能。
+面板上的开关等价于把名字加进 / 移出 `config/config.toml` 的 `[extensions] enabled`。
+启用和停用都是热生效：钩子立刻挂上或摘掉，面板路由同时挂载或撤掉，不用重启进程。
 
 ## 例：内建的 stats
 
-`app/extensions/stats.py` 是一个完整例子：MANIFEST 里带两个设置项，`router`
-提供了 `/data` 和一个小面板页，卡片上「设置」和「打开面板」两个按钮都能用。
-
-## 禁用
-
-面板上关掉开关即可，等价于把名字从 `config/config.toml` 的
-`[extensions] enabled` 里删掉。禁用后它的面板路由也会一起撤掉。
+`plugins/stats/` 是一个完整例子：`plugin.toml` 里两个设置项，`plugin.py` 里
+一个持久化计数器（写在 `ctx.data_dir` 里，重启后还在）、一个 `/data` 接口和一个小面板页，
+卡片上「设置」和「打开面板」两个按钮都能用。

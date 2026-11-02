@@ -11,7 +11,7 @@ from typing import AsyncIterator, Callable
 from ..config import Config
 from ..context.store import MessageStore
 from ..context.window import build_history, keep_addressed
-from ..extensions.base import ExtensionRegistry, HookContext
+from ..pluginkit.registry import ExtensionRegistry, HookContext
 from ..llm.client import LLMClient, LLMError, ThinkingBudgetExceeded
 from ..llm.prompt import build_messages, build_system_prompt, scene_line
 from ..llm.tokens import estimate_text_tokens
@@ -587,5 +587,6 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
     if text:
         lines.append(text)
     return "\n".join(lines)
+
 
 

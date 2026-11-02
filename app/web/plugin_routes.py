@@ -9,9 +9,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..config import Config
-from ..extensions.base import ExtensionRegistry
-from ..extensions.manifest import read_manifest
-from ..extensions.settings_store import defaults_from
+from ..pluginkit.registry import ExtensionRegistry
+from ..pluginkit.manifest import read_manifest
+from ..pluginkit.settings_store import defaults_from
 
 log = logging.getLogger(__name__)
 
@@ -104,5 +104,6 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
 
         merged = registry.update_settings(name, {**defaults, **clean})
         return JSONResponse({"ok": True, "settings": merged, "message": "设置已保存"})
+
 
 

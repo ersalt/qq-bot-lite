@@ -19,8 +19,8 @@ from .config import CONFIG_PATH, ROOT, Config, load_config
 from .console import ConsoleFormatter, enable_ansi, print_banner, set_title, start_console_watchdog
 from .context.store import MessageStore
 from .core.pipeline import ChatService
-from .extensions.base import ExtensionRegistry
-from .extensions.settings_store import PluginSettingsStore
+from .pluginkit.registry import ExtensionRegistry
+
 from .llm.client import LLMClient
 from .media.images import ImageLoader
 from .onebot.members import MemberDirectory
@@ -103,17 +103,19 @@ def _install_loop_error_filter() -> None:
     loop.set_exception_handler(handler)
 
 
-def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None = None) -> FastAPI:
+def build_app(
+    cfg: Config,
+    db_path: Path | None = None,
+    config_path: Path | None = None,
+    plugin_data_dir: Path | None = None,
+) -> FastAPI:
     store = MessageStore(db_path or (ROOT / "data" / "app.db"))
     persona = Persona(cfg)
     llm = LLMClient(cfg.llm)
     images = ImageLoader(cfg.images)
     members = MemberDirectory()
     sender = ReplySender(cfg, members)
-    extensions = ExtensionRegistry(
-        cfg.extensions.enabled,
-        settings=PluginSettingsStore((config_path or CONFIG_PATH).parent / "plugins.toml"),
-    )
+    extensions = ExtensionRegistry(cfg.extensions.enabled, data_dir=plugin_data_dir)
 
     server_holder: dict[str, OneBotServer] = {}
 
@@ -259,6 +261,8 @@ def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None
 def create_app(config_path: Path | None = None) -> FastAPI:
     cfg = load_config(config_path)
     return build_app(cfg, config_path=config_path)
+
+
 
 
 

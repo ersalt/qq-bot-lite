@@ -7,3 +7,7 @@ data/*.db-shm
 logs/*.log
 logs/*.log.*
 .pytest_cache/
+
+# 插件运行期数据（settings.toml 以外的内容不入库）
+data/plugin_data/*/*.json
+data/plugin_data/*/*.log
