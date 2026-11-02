@@ -310,7 +310,7 @@ SECTIONS: list[dict[str, Any]] = [
                 min=0,
                 max=4,
                 optional_zero=True,
-                help="0 = 只处理当前这条",
+                help="0 = 只处理当前这条。带 2 张就够答“刚才那张图里有什么”",
             ),
             _f("images.timeout", "下载超时（秒）", "number", min=3, max=120, restart=True),
             _f(
@@ -320,14 +320,6 @@ SECTIONS: list[dict[str, Any]] = [
                 help="QQ 图床如果必须走代理才下得动，就打开。改完要重启",
                 restart=True,
             ),
-        ],
-    },
-    {
-        "id": "extensions",
-        "title": "扩展",
-        "desc": "插件按名字加载，逗号分隔。改完重启生效。",
-        "fields": [
-            _f("extensions.enabled", "启用的扩展", "list", help="比如 slang, weather；留空 = 不加载", restart=True),
         ],
     },
 ]

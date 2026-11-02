@@ -53,7 +53,6 @@ RESTART_FIELDS = {
     "llm.api_key",
     "images.timeout",
     "images.trust_env",
-    "extensions.enabled",
 }
 
 

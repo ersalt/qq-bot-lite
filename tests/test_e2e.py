@@ -639,3 +639,54 @@ async def test_history_image_is_reattached_next_turn(tmp_path: Path) -> None:
     assert len(state.requests) >= 2, "应该有两轮模型请求"
     second = json.dumps(state.requests[-1]["messages"], ensure_ascii=False)
     assert "image_url" in second, f"第二轮没把上一轮的图带上: {second[:400]}"
+
+@pytest.mark.asyncio
+async def test_unaddressed_image_is_not_downloaded(tmp_path: Path) -> None:
+    """没 @ 也没引用的图，连下载都不该发生：群里绝大多数图跟它无关。"""
+    state = FakeState()
+    hits = {"count": 0}
+    llm_port, app_port = free_port(), free_port()
+
+    app = make_fake_llm(state)
+
+    @app.get("/cat.png")
+    async def cat() -> Response:
+        import io
+
+        from PIL import Image
+
+        hits["count"] += 1
+        buf = io.BytesIO()
+        Image.new("RGB", (16, 16), "green").save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(
+        build_app(cfg, db_path=tmp_path / "lazy-img.db", plugin_data_dir=tmp_path / "pd"), app_port
+    )
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            quiet = group_event(9101, "")
+            quiet["message"] = [
+                {"type": "text", "data": {"text": "随手发张图"}},
+                {"type": "image", "data": {"url": f"http://127.0.0.1:{llm_port}/cat.png", "file": "cat.png"}},
+            ]
+            await ws.send(json.dumps(quiet))
+            await asyncio.sleep(0.8)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert hits["count"] == 0, "没被叫到的图不该下载"
+    assert not state.requests, "没被叫到就不该请求模型"

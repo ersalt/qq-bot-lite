@@ -110,7 +110,8 @@ class ChatService:
         conn = self.get_connection()
         # 引用了一张图、但当前消息本身只有文字：把那张图取过来。
         # 群里常用的姿势是“先发图，再引用那张图说一句”，不取的话模型只会回“图呢？”。
-        if conn is not None and not event.content.images and event.reply_id:
+        # 只有真要回复时才去取，否则每次引用都要多打一次 get_msg。
+        if decision.should and conn is not None and not event.content.images and event.reply_id:
             try:
                 quoted = await self._quoted_images(conn, event.reply_id)
                 if quoted:
@@ -163,8 +164,9 @@ class ChatService:
 
         # 历史要在当前消息落库前取，避免把“当前这条”重复送进模型。
         history = self._history_window(session)
-        # 图先下载并落盘：落盘后的路径要写进历史，下一轮才答得出“刚才那张图”。
-        prepared = await self.images.prepare(event.content.images)
+        # 图只在真要回这条消息时才下载解析。群里绝大部分图跟它无关，
+        # 之前的写法是每张都下、每张都解码，日志里一片“图片 N 张”白干活。
+        prepared = await self.images.prepare(event.content.images) if decision.should else []
         self.store.add(
             session,
             "user",
