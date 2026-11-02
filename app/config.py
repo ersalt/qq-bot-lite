@@ -82,6 +82,9 @@ class ReplyConfig:
     segment_interval: float = 0.6
     quote: bool = True
     at_sender: bool = False
+    # 把模型写的 @昵称 解析成真正的 at 段
+    resolve_mentions: bool = True
+    max_mentions: int = 3
     dedupe_window: float = 30.0
 
 

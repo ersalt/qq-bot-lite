@@ -13,11 +13,14 @@ from typing import Any, AsyncIterator, Callable
 from ..config import Config
 from ..onebot.client import OneBotActionError, OneBotConnection
 from ..onebot.events import MessageEvent
+from ..onebot.members import MemberDirectory
 from ..onebot.protocol import at_segment, reply_segment, text_segment
 
 log = logging.getLogger(__name__)
 
 _CQ_RE = re.compile(r"\[CQ:[^\]]*\]")
+# 模型写的 @昵称：到空白、标点或另一个 @ 为止
+_MENTION_RE = re.compile(r"@([^\s@\[\]{}<>，。！？、,.!?：:；;\"'（）()]{1,20})")
 
 
 @dataclass(slots=True)
@@ -51,6 +54,7 @@ class ReplySender:
     def __init__(self, cfg: Config):
         self.cfg = cfg
         self._sent: dict[tuple[str, str], float] = {}
+        self.members = MemberDirectory()
 
     async def deliver(
         self,
@@ -112,7 +116,7 @@ class ReplySender:
         if with_meta and self.cfg.reply.at_sender and event.is_group:
             segments.append(at_segment(event.user_id))
             segments.append(text_segment(" "))
-        segments.append(text_segment(text))
+        segments.extend(await self._text_segments(conn, event, text))
 
         try:
             return _message_id(await self._call(conn, event, segments)), reply_used
@@ -130,6 +134,33 @@ class ReplySender:
             )
             raise
 
+    async def _text_segments(self, conn: OneBotConnection, event: MessageEvent, text: str) -> list[dict]:
+        """把模型写的 @昵称 换成真正的 at 段；解析不到就原样当文本。"""
+        if not self.cfg.reply.resolve_mentions or not event.is_group or event.group_id is None:
+            return [text_segment(text)]
+
+        segments: list[dict] = []
+        pos = 0
+        found = 0
+        for match in _MENTION_RE.finditer(text):
+            if found >= self.cfg.reply.max_mentions:
+                break
+            user_id = await self.members.resolve(conn, event.group_id, match.group(1))
+            if user_id is None:
+                continue
+            if match.start() > pos:
+                segments.append(text_segment(text[pos : match.start()]))
+            segments.append(at_segment(user_id))
+            segments.append(text_segment(" "))
+            pos = match.end()
+            found += 1
+
+        if found == 0:
+            return [text_segment(text)]
+        if pos < len(text):
+            segments.append(text_segment(text[pos:]))
+        log.info("已解析 %d 个 @ 目标", found, extra={"tag": "sys"})
+        return segments
     async def _call(self, conn: OneBotConnection, event: MessageEvent, segments: list[dict]) -> Any:
         timeout = self.cfg.onebot.action_timeout
         if event.is_group and event.group_id is not None:

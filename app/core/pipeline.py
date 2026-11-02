@@ -13,7 +13,7 @@ from ..context.store import MessageStore
 from ..context.window import build_history
 from ..extensions.base import ExtensionRegistry, HookContext
 from ..llm.client import LLMClient, LLMError, ThinkingBudgetExceeded
-from ..llm.prompt import build_messages, build_system_prompt
+from ..llm.prompt import build_messages, build_system_prompt, scene_line
 from ..llm.tokens import estimate_text_tokens
 from ..media.images import ImageLoader
 from ..onebot.client import OneBotConnection
@@ -173,17 +173,10 @@ class ChatService:
         ctx.history = history
 
         content = await self.images.build_content(
-            _prompt_text(event, quoted=decision.reason == "quote"), event.content.images
+            _prompt_text(event, quoted=decision.reason == "quote", cfg=self.cfg), event.content.images
         )
         extra = await self.extensions.collect_system_prompt(ctx)
-        system_prompt = build_system_prompt(
-            self.cfg,
-            self.persona.text,
-            is_group=event.is_group,
-            group_id=event.group_id,
-            speaker=event.sender_name,
-            extra_sections=extra,
-        )
+        system_prompt = build_system_prompt(self.cfg, self.persona.text, extra_sections=extra)
         messages = build_messages(system_prompt, history, content, self.cfg.context.merge_same_role)
 
         log.debug(
@@ -444,8 +437,12 @@ def _reasoning_tokens(llm: LLMClient) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def _prompt_text(event: MessageEvent, *, quoted: bool = False) -> str:
-    """纯 @ 或空消息也要给模型一句人话，不然它面对空 user 消息会乱编。"""
+def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | None = None) -> str:
+    """当前这条 user 消息：场景行 + 正文。
+
+    场景信息（时间/群/说话人）必须放在这里而不是 system——放 system 里每句都变，
+    会让 KV 缓存整段失效，实测每次多花 2~3 秒重新预填充。
+    """
     text = event.content.text.strip()
     if not text:
         if event.content.images:
@@ -454,7 +451,20 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False) -> str:
             text = "（只@了你一下，没说话）"
         else:
             text = "（发来一条空消息）"
+
+    lines: list[str] = []
+    if cfg is not None:
+        lines.append(
+            scene_line(
+                cfg,
+                is_group=event.is_group,
+                group_id=event.group_id,
+                group_name=event.group_name,
+                speaker=event.sender_name,
+            )
+        )
     if quoted:
-        prefix = "（他引用了你之前说的话）"
-        return f"{prefix}\n{text}" if text else prefix
-    return text
+        lines.append("（他引用了你之前说的话）")
+    if text:
+        lines.append(text)
+    return "\n".join(lines)

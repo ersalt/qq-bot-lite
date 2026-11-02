@@ -111,6 +111,11 @@ async def collect_actions(ws, timeout: float = 3.0) -> list[dict]:
         action = payload["action"]
         if action == "get_group_info":
             data = {"group_id": payload["params"].get("group_id"), "group_name": "测试群"}
+        elif action == "get_group_member_list":
+            data = [
+                {"user_id": 999, "card": "饺子", "nickname": "饺子"},
+                {"user_id": USER_ID, "card": "阿伟", "nickname": "阿伟"},
+            ]
         elif action.startswith("send_"):
             actions.append(payload)
             data = {"message_id": 5000 + len(actions)}
@@ -214,6 +219,63 @@ async def test_empty_reply_falls_back_without_thinking(tmp_path: Path) -> None:
     assert state.requests[1].get("reasoning_effort") == "none", "重答要关思考"
     assert actions, "重答的内容应该发出去"
     assert "兜底回复" in json.dumps(actions, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_mention_in_reply_becomes_real_at(tmp_path: Path) -> None:
+    """模型写 @饺子 要变成真正的 at 段，而不是一段普通文字。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = FastAPI()
+
+    @app.get("/v1/models")
+    async def models() -> dict:
+        return {"data": [{"id": "fake-model"}]}
+
+    @app.post("/v1/chat/completions")
+    async def chat(request: Request):
+        body = await request.json()
+        state.requests.append(body)
+        text = "行，@饺子 你过来看看。"
+        if not body.get("stream"):
+            return {"choices": [{"message": {"content": text}}]}
+
+        async def gen():
+            for index in range(0, len(text), 4):
+                payload = {"choices": [{"delta": {"content": text[index : index + 4]}}]}
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "mention.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            await ws.send(json.dumps(group_event(4001, "把饺子叫来")))
+            actions = await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert actions, "应该有回复"
+    segments = actions[0]["params"]["message"]
+    ats = [seg for seg in segments if seg["type"] == "at"]
+    assert ats and ats[0]["data"]["qq"] == "999", f"@饺子 没解析成 at 段: {segments}"
+    joined = "".join(seg["data"].get("text", "") for seg in segments)
+    assert "@饺子" not in joined, "解析成功后不该再把字面 @饺子 发出去"
 
 
 @pytest.mark.asyncio
