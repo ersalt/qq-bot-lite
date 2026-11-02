@@ -212,7 +212,14 @@ class ChatService:
         prepared: list | None = None,
     ) -> None:
         timing = _Timing()
-        history = build_history(history_messages, self.cfg.context, is_group=event.is_group)
+        budget = self.cfg.context.max_tokens
+        cap = self.cfg.llm.max_context
+        if cap > 0:
+            # 软件侧的硬上限：prompt 再长也不许超过模型窗口的一半，留出生长的余地。
+            budget = min(budget, max(int(cap * 0.5), 256))
+        history = build_history(
+            history_messages, self.cfg.context, is_group=event.is_group, budget_override=budget
+        )
         history = self._attach_history_images(history)
         ctx.history = history
 
@@ -626,6 +633,7 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
     if text:
         lines.append(text)
     return "\n".join(lines)
+
 
 
 

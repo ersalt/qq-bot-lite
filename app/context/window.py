@@ -55,6 +55,7 @@ def build_history(
     cfg: ContextConfig,
     *,
     is_group: bool,
+    budget_override: int | None = None,
 ) -> list[dict[str, Any]]:
     """messages 为从旧到新的顺序，返回同样顺序的 chat messages（不含当前这条）。"""
     items: list[dict[str, Any]] = []
@@ -73,7 +74,7 @@ def build_history(
     # token 预算：从新到旧保留，超预算就丢最旧的。
     # 注意这里是"一次退到 60%"，不是一条一条挤：窗口每轮只掉一条的话前缀每轮都在动，
     # llama.cpp 的前缀缓存就永远命不中，预填充等于每次全量重来。
-    budget = max(cfg.max_tokens, 256)
+    budget = max(budget_override if budget_override is not None else cfg.max_tokens, 256)
     total = sum(estimate_text_tokens(item["content"]) + 4 for item in items)
     if total > budget:
         target = int(budget * 0.6)
@@ -88,3 +89,4 @@ def build_history(
         kept.reverse()
         return kept
     return items
+

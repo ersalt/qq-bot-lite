@@ -41,6 +41,19 @@ class LLMClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    async def reload(self) -> None:
+        """切换模型配置后重建连接池：base_url / api_key 是建客户端时抓走的。"""
+        try:
+            await self._client.aclose()
+        except Exception:  # noqa: BLE001 - 关不掉也要继续
+            log.debug("关闭旧连接池失败", exc_info=True)
+        self._client = httpx.AsyncClient(
+            base_url=self.cfg.base_url.rstrip("/"),
+            timeout=httpx.Timeout(connect=10.0, read=self.cfg.timeout, write=30.0, pool=10.0),
+            trust_env=False,
+            headers={"Authorization": f"Bearer {self.cfg.api_key}"} if self.cfg.api_key else {},
+        )
+
     def _payload(
         self,
         messages: list[dict[str, Any]],

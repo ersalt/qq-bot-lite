@@ -32,16 +32,23 @@ function pluginCard(plugin) {
   if (plugin.author) titleBox.append(el("span", "plugin-author", plugin.author));
   head.append(titleBox);
 
-  const toggle = document.createElement("input");
-  toggle.type = "checkbox";
-  toggle.checked = Boolean(plugin.enabled);
-  toggle.disabled = Boolean(plugin.error);
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "switch-btn";
+  toggle.setAttribute("role", "switch");
+  toggle.setAttribute("aria-checked", String(Boolean(plugin.enabled)));
   toggle.setAttribute("aria-label", `启用 ${plugin.title}`);
-  const track = el("label", "track");
-  const switchWrap = el("label", "switch plugin-switch");
-  switchWrap.append(toggle, track);
-  toggle.addEventListener("change", () => togglePlugin(plugin, toggle.checked, toggle));
-  head.append(switchWrap);
+  toggle.disabled = Boolean(plugin.error);
+  if (plugin.enabled) toggle.classList.add("on");
+  toggle.append(el("span", "track"));
+  toggle.addEventListener("click", () => {
+    if (toggle.disabled) return;
+    const next = !toggle.classList.contains("on");
+    toggle.classList.toggle("on", next);
+    toggle.setAttribute("aria-checked", String(next));
+    togglePlugin(plugin, next, toggle);
+  });
+  head.append(toggle);
   card.append(head);
 
   card.append(el("p", "plugin-desc", plugin.error || plugin.description || "没有写说明。"));
@@ -144,8 +151,8 @@ function emptyPlugins(soft = false) {
   return box;
 }
 
-async function togglePlugin(plugin, enabled, input) {
-  input.disabled = true;
+async function togglePlugin(plugin, enabled, button) {
+  button.disabled = true;
   try {
     const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.name)}/enabled`, {
       method: "POST",
@@ -154,7 +161,7 @@ async function togglePlugin(plugin, enabled, input) {
     });
     const data = await response.json();
     if (!response.ok || !data.ok) {
-      input.checked = !enabled;
+      button.classList.toggle("on", !enabled);
       toast(data.message || "切换失败", "bad");
       return;
     }
@@ -164,10 +171,10 @@ async function togglePlugin(plugin, enabled, input) {
     const restart = $("restart-notice");
     if (restart) restart.hidden = true;
   } catch (error) {
-    input.checked = !enabled;
+    button.classList.toggle("on", !enabled);
     toast(`切换失败：${error.message}`, "bad");
   } finally {
-    input.disabled = false;
+    button.disabled = false;
   }
 }
 

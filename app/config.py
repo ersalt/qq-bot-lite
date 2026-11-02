@@ -39,6 +39,10 @@ class LLMConfig:
     base_url: str = "http://127.0.0.1:1234/v1"
     api_key: str = "lm-studio"
     model: str = "qwen3.8-27b"
+    # 当前生效的配置名，对应 config/models.toml 里的 [[profile]]。
+    profile: str = ""
+    # 软件侧上下文上限：0 = 不限制。填了就没法把 prompt 撑到模型窗口以外。
+    max_context: int = 0
     # 采样参数。None = 不发送，用 LM Studio 里模型自己的设置（AstrBot 也是这样）。
     # 想强制指定就填数字，比如 temperature = 0.8。
     temperature: float | None = None
@@ -188,3 +192,4 @@ def load_config(path: Path | None = None) -> Config:
         extensions=_merged(ExtensionsConfig(), _section(raw, "extensions")),
     )
     return cfg
+

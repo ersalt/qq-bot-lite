@@ -28,7 +28,13 @@ STATIC = HERE / "static"
 PAGE = HERE / "page.html"
 
 
-def mount_web(app: FastAPI, cfg: Config, persona: Persona, config_path: Path) -> None:
+def mount_web(
+    app: FastAPI,
+    cfg: Config,
+    persona: Persona,
+    config_path: Path,
+    on_llm_change=None,
+) -> None:
     """挂上首页、配置读写接口和静态资源。"""
 
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
@@ -75,6 +81,11 @@ def mount_web(app: FastAPI, cfg: Config, persona: Persona, config_path: Path) ->
             )
 
         apply_to_config(cfg, clean)
+        if on_llm_change is not None and any(key.startswith("llm.") for key in clean):
+            try:
+                await on_llm_change()
+            except Exception:  # noqa: BLE001 - 重建连接池失败不该拦住保存
+                log.exception("重建模型连接失败")
         if "persona.file" in clean:
             try:
                 persona.reload()
@@ -167,3 +178,4 @@ def mount_web(app: FastAPI, cfg: Config, persona: Persona, config_path: Path) ->
             return JSONResponse(
                 {"ok": False, "message": f"{type(exc).__name__}: {exc}", "latency_ms": round(elapsed)}
             )
+

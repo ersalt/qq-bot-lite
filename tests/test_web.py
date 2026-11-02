@@ -29,7 +29,17 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path]:
     path = tmp_path / "config.toml"
     path.write_text(BASE_TOML, encoding="utf-8")
     cfg = load_config(path)
-    app = build_app(cfg, db_path=tmp_path / "web.db", config_path=path, plugin_data_dir=tmp_path / "plugin_data")
+    personas = tmp_path / "personas"
+    personas.mkdir(parents=True, exist_ok=True)
+    (personas / "default.md").write_text("# 默认人设\n\n你是测试机器人。", encoding="utf-8")
+    cfg.persona.file = "personas/default.md"
+    app = build_app(
+        cfg,
+        db_path=tmp_path / "web.db",
+        config_path=path,
+        plugin_data_dir=tmp_path / "plugin_data",
+        persona_dir=personas,
+    )
     return TestClient(app), path
 
 
@@ -95,28 +105,67 @@ def test_invalid_value_is_rejected(tmp_path: Path) -> None:
 def test_restart_fields_reported(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     with client:
-        response = client.post("/api/config", json={"updates": {"llm.base_url": "http://127.0.0.1:9999/v1"}})
+        response = client.post("/api/config", json={"updates": {"server.port": 8899}})
         assert response.status_code == 200
         restart = response.json()["restart"]
-        assert any("接口地址" in item for item in restart)
+        assert any("端口" in item for item in restart)
 
 
-def test_persona_edit_roundtrip(tmp_path: Path) -> None:
+def test_persona_manage_and_edit(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
-    persona_file = tmp_path / "persona.md"
-    persona_file.write_text("旧人设", encoding="utf-8")
     with client:
-        client.post("/api/config", json={"updates": {"persona.file": str(persona_file)}})
-        before = client.get("/api/persona").json()
-        assert before["text"] == "旧人设"
+        # 测试配置指向默认人设文件，先把它指到一个临时目录下的文件
+        listing = client.get("/api/personas").json()
+        assert listing["items"], listing
 
-        response = client.post("/api/persona", json={"text": "新人设\n不超过两句话。"})
-        assert response.status_code == 200, response.text
-        assert response.json()["ok"] is True
-        assert persona_file.read_text(encoding="utf-8") == "新人设\n不超过两句话。"
+        created = client.post("/api/personas/create", json={"name": "测试人设"})
+        assert created.status_code == 200, created.text
+        assert any(item["name"] == "测试人设" for item in created.json()["items"])
+
+        activated = client.post("/api/personas/active", json={"name": "测试人设"})
+        assert activated.status_code == 200, activated.text
+        assert activated.json()["active"] == "测试人设"
+
+        before = client.get("/api/persona").json()
+        assert "人设名" not in before["text"]
+        assert "测试人设" in before["text"]
+
+        saved = client.post("/api/persona", json={"text": "新人设\n不超过两句话。"})
+        assert saved.status_code == 200, saved.text
+        assert client.get("/api/persona").json()["text"] == "新人设\n不超过两句话。"
 
         empty = client.post("/api/persona", json={"text": "   "})
         assert empty.status_code == 400
+
+        # 正在用的人设不能删
+        blocked = client.request("DELETE", "/api/personas/测试人设")
+        assert blocked.status_code == 400
+
+        switched = client.post("/api/personas/active", json={"name": listing["active"]})
+        assert switched.status_code == 200
+        removed = client.request("DELETE", "/api/personas/测试人设")
+        assert removed.status_code == 200, removed.text
+
+
+def test_model_profiles_activate_and_delete(tmp_path: Path) -> None:
+    client, config_path = _client(tmp_path)
+    with client:
+        listing = client.get("/api/models").json()
+        assert listing["items"], "首次启动应该自动存一张默认卡"
+
+        created = client.post("/api/models", json={"action": "create", "name": "备用"})
+        assert created.status_code == 200, created.text
+        names = [item["name"] for item in created.json()["items"]]
+        assert "备用" in names
+
+        active = client.post("/api/models", json={"action": "activate", "name": "备用"})
+        assert active.status_code == 200, active.text
+        assert active.json()["active"] == "备用"
+        assert 'profile = "备用"' in config_path.read_text(encoding="utf-8")
+
+        # 正在用的配置不能删
+        blocked = client.post("/api/models", json={"action": "delete", "name": "备用"})
+        assert blocked.status_code == 400
 
 
 def test_llm_check_reports_failure_gracefully(tmp_path: Path) -> None:
@@ -178,4 +227,5 @@ def test_plugin_toggle_writes_config(tmp_path: Path) -> None:
         off = client.post("/api/plugins/stats/enabled", json={"enabled": False})
         assert off.status_code == 200
     assert "enabled = []" in path.read_text(encoding="utf-8")
+
 

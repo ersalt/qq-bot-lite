@@ -27,6 +27,8 @@ from .onebot.members import MemberDirectory
 from .onebot.server import OneBotServer
 from .persona import Persona
 from .reply.sender import ReplySender
+from .web.model_routes import mount_model_api
+from .web.persona_routes import mount_persona_api
 from .web.plugin_routes import mount_plugin_api, mount_plugin_routers
 from .web.routes import mount_web
 from .web.settings import save_to_toml
@@ -108,6 +110,7 @@ def build_app(
     db_path: Path | None = None,
     config_path: Path | None = None,
     plugin_data_dir: Path | None = None,
+    persona_dir: Path | None = None,
 ) -> FastAPI:
     store = MessageStore(db_path or (ROOT / "data" / "app.db"))
     persona = Persona(cfg)
@@ -253,7 +256,9 @@ def build_app(
         cfg.extensions.enabled = list(names)
 
     mount_plugin_api(app, cfg, extensions, save_enabled)
-    mount_web(app, cfg, persona, config_path or CONFIG_PATH)
+    mount_persona_api(app, cfg, persona, config_path or CONFIG_PATH, root=persona_dir)
+    mount_model_api(app, cfg, llm, config_path or CONFIG_PATH)
+    mount_web(app, cfg, persona, config_path or CONFIG_PATH, on_llm_change=llm.reload)
 
     return app
 
@@ -261,6 +266,9 @@ def build_app(
 def create_app(config_path: Path | None = None) -> FastAPI:
     cfg = load_config(config_path)
     return build_app(cfg, config_path=config_path)
+
+
+
 
 
 

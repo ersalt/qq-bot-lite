@@ -127,6 +127,10 @@ function render() {
     if (section.id === "plugins") {
       block.classList.add("panel-flush");
       block.append(pluginsPanel());
+    } else if (section.id === "llm") {
+      block.append(modelPanel(section));
+    } else if (section.id === "persona") {
+      block.append(personaPanel(section));
     } else {
       const grid = el("div", "grid");
       for (const field of section.fields) {
@@ -159,7 +163,13 @@ function showSection(id) {
   state.active = target;
 
   for (const panel of document.querySelectorAll("#sections > section")) {
-    panel.hidden = panel.dataset.section !== target;
+    const active = panel.dataset.section === target;
+    panel.hidden = !active;
+    if (active) {
+      panel.removeAttribute("data-anim");
+      void panel.offsetWidth;
+      panel.setAttribute("data-anim", "in");
+    }
   }
   for (const chip of document.querySelectorAll("#nav a")) {
     chip.classList.toggle("active", chip.dataset.section === target);
@@ -167,7 +177,7 @@ function showSection(id) {
 
   const section = state.schema.find((item) => item.id === target);
   const actions = document.querySelector(".toolbar-actions");
-  if (actions) actions.hidden = target === "plugins";
+  if (actions) actions.hidden = target === "plugins" || target === "persona";
   $("page-title").textContent = section ? section.title : "设置";
   $("page-sub").textContent = section?.desc || "改动即时写回 config/config.toml";
 
@@ -389,6 +399,13 @@ async function save() {
     } else {
       notice.hidden = true;
     }
+    if (Object.keys(updates).some((key) => key.startsWith("llm."))) {
+      fetch("/api/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save" }),
+      }).catch(() => {});
+    }
     toast("已保存并生效");
     render();
   } catch (error) {
@@ -450,9 +467,21 @@ function initTheme() {
     button.title = theme === "dark" ? "切到浅色" : "切到深色";
   };
   paint(document.documentElement.getAttribute("data-theme") || "light");
-  button.addEventListener("click", () => {
+  button.addEventListener("click", (event) => {
     const current = document.documentElement.getAttribute("data-theme") || "light";
-    paint(current === "dark" ? "light" : "dark");
+    const next = current === "dark" ? "light" : "dark";
+    if (typeof document.startViewTransition !== "function") {
+      paint(next);
+      return;
+    }
+    const x = event.clientX ?? window.innerWidth / 2;
+    const y = event.clientY ?? 40;
+    const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
+    const root = document.documentElement;
+    root.style.setProperty("--vt-x", x + "px");
+    root.style.setProperty("--vt-y", y + "px");
+    root.style.setProperty("--vt-r", radius + "px");
+    document.startViewTransition(() => paint(next));
   });
 }
 
@@ -499,5 +528,9 @@ initTheme();
 load().then(watchSections);
 pollStatus();
 setInterval(pollStatus, 10000);
+
+
+
+
 
 

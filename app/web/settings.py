@@ -49,8 +49,6 @@ RESTART_FIELDS = {
     "onebot.path",
     "onebot.access_token",
     "onebot.max_connections",
-    "llm.base_url",
-    "llm.api_key",
     "images.timeout",
     "images.trust_env",
 }
@@ -256,3 +254,4 @@ def restart_fields(updates: dict[str, Any]) -> list[str]:
         for field in section["fields"]
     }
     return [labels.get(key, key) for key in updates if key in RESTART_FIELDS]
+

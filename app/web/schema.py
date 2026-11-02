@@ -85,6 +85,15 @@ SECTIONS: list[dict[str, Any]] = [
             _f("llm.api_key", "API Key", "password", help="LM Studio 不校验，随便填", restart=True),
             _f("llm.model", "模型标识", help="必须和 LM Studio 里已加载的模型名完全一致"),
             _f(
+                "llm.max_context",
+                "最大上下文（软件约束）",
+                "number",
+                min=0,
+                max=1048576,
+                optional_zero=True,
+                help="0 = 不限制。填了就按它的 50% 当 prompt 预算，prompt 撑不到别处去",
+            ),
+            _f(
                 "llm.temperature",
                 "temperature",
                 "number",
@@ -211,7 +220,6 @@ SECTIONS: list[dict[str, Any]] = [
         "title": "人设",
         "desc": "人设文件是纯 Markdown，改完即时生效，不用重启。",
         "fields": [
-            _f("persona.file", "人设文件", help="相对项目根目录，或绝对路径"),
             _f("persona.nickname", "兜底昵称", help="拿不到群名片时用这个名字"),
         ],
     },
@@ -323,3 +331,21 @@ SECTIONS: list[dict[str, Any]] = [
         ],
     },
 ]
+
+
+# 模型那组字段分两档：基础在前，进阶隔一个空行。其余组一律 basic。
+_ADVANCED_KEYS = {
+    "llm.temperature",
+    "llm.top_p",
+    "llm.max_tokens",
+    "llm.reasoning_effort",
+    "llm.stream",
+    "llm.thinking_budget",
+    "llm.timeout",
+    "llm.max_concurrency",
+    "llm.presence_penalty",
+    "llm.frequency_penalty",
+}
+for _section in SECTIONS:
+    for _field in _section["fields"]:
+        _field["group"] = "advanced" if _field["key"] in _ADVANCED_KEYS else "basic"
