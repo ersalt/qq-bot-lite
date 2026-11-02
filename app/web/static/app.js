@@ -383,6 +383,26 @@ async function load() {
   }
 }
 
+/* ---------- 主题 ---------- */
+
+function initTheme() {
+  const button = $("theme");
+  if (!button) return;
+  const paint = (theme) => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem("qqbotlite-theme", theme);
+    } catch (error) {}
+    button.textContent = theme === "dark" ? "◑" : "◐";
+    button.title = theme === "dark" ? "切到浅色" : "切到深色";
+  };
+  paint(document.documentElement.getAttribute("data-theme") || "light");
+  button.addEventListener("click", () => {
+    const current = document.documentElement.getAttribute("data-theme") || "light";
+    paint(current === "dark" ? "light" : "dark");
+  });
+}
+
 /* ---------- 状态与导航 ---------- */
 
 async function pollStatus() {
@@ -401,18 +421,40 @@ async function pollStatus() {
 }
 
 function watchSections() {
-  const observer = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        for (const anchor of document.querySelectorAll("#nav a")) {
-          anchor.classList.toggle("active", anchor.dataset.section === entry.target.dataset.section);
-        }
-      }
+  const sections = Array.from(document.querySelectorAll(".form section"));
+  if (!sections.length) return;
+
+  const setActive = (id) => {
+    for (const anchor of document.querySelectorAll("#nav a")) {
+      anchor.classList.toggle("active", anchor.dataset.section === id);
+    }
+  };
+
+  let ticking = false;
+  const update = () => {
+    ticking = false;
+    const threshold = 116;
+    let current = sections[0].dataset.section;
+    for (const section of sections) {
+      if (section.getBoundingClientRect().top <= threshold) current = section.dataset.section;
+    }
+    setActive(current);
+  };
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
     },
-    { rootMargin: "-84px 0px -60% 0px", threshold: 0 },
+    { passive: true },
   );
-  for (const section of document.querySelectorAll(".form section")) observer.observe(section);
+  window.addEventListener("resize", update, { passive: true });
+  for (const anchor of document.querySelectorAll("#nav a")) {
+    anchor.addEventListener("click", () => setActive(anchor.dataset.section));
+  }
+  update();
 }
 
 $("save").addEventListener("click", save);
@@ -433,6 +475,7 @@ window.addEventListener("beforeunload", (event) => {
   if (state.dirty.size > 0) event.preventDefault();
 });
 
+initTheme();
 load().then(watchSections);
 pollStatus();
 setInterval(pollStatus, 10000);

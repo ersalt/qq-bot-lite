@@ -2,52 +2,66 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f4f7fb">
 <title>qq-bot-lite 设置</title>
+<script>
+  (function () {
+    try {
+      var saved = localStorage.getItem("qqbotlite-theme");
+      var query = new URLSearchParams(location.search).get("theme");
+      var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var theme = query === "dark" || query === "light" ? query : saved || (prefersDark ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0f1a" : "#f4f7fb");
+    } catch (error) {}
+  })();
+</script>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="shell">
-  <aside class="side">
+<div class="page">
+
+  <header class="head">
     <div class="brand">
-      <div class="brand-mark">qq<span>·</span>bot<span>·</span>lite</div>
-      <div class="brand-ver">v__VERSION__</div>
+      <span class="brand-name">qq-bot-lite</span>
+      <span class="brand-ver">v__VERSION__</span>
     </div>
-
-    <nav class="nav" id="nav" aria-label="设置分组"></nav>
-
-    <div class="side-foot">
-      <div class="conn" id="conn">
+    <div class="head-right">
+      <div class="status" id="conn">
         <span class="dot" id="conn-dot"></span>
-        <span id="conn-text">连接状态读取中</span>
+        <span id="conn-text">读取中</span>
+        <span class="status-sep"></span>
+        <span class="mono" id="stat-line"></span>
       </div>
-      <div class="stat-line" id="stat-line"></div>
+      <button class="icon-btn" id="theme" type="button" aria-label="切换主题">◐</button>
     </div>
-  </aside>
+  </header>
 
-  <main class="main">
-    <header class="topbar">
-      <div>
-        <h1 id="page-title">设置</h1>
-        <p class="topbar-sub" id="page-sub">改动即时写回 config/config.toml</p>
-      </div>
-      <div class="topbar-actions">
-        <button class="btn btn-ghost" id="reload" type="button">放弃改动</button>
-        <button class="btn btn-primary" id="save" type="button" disabled>保存</button>
-      </div>
-    </header>
+  <nav class="pillbar" id="nav" aria-label="设置分组"></nav>
 
-    <div class="notice" id="restart-notice" hidden></div>
+  <div class="toolbar">
+    <div class="toolbar-text">
+      <h1 id="page-title">设置</h1>
+      <p id="page-sub">改动即时写回 config/config.toml</p>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn" id="reload" type="button" disabled>放弃改动</button>
+      <button class="btn btn-primary" id="save" type="button" disabled>保存</button>
+    </div>
+  </div>
 
-    <form id="form" class="form" autocomplete="off">
-      <div id="sections"></div>
-    </form>
+  <div class="notice" id="restart-notice" hidden></div>
 
-    <footer class="foot">
-      <span>配置来源 <code>config/config.toml</code></span>
-      <span id="foot-state">未加载</span>
-    </footer>
-  </main>
+  <form id="form" class="form" autocomplete="off">
+    <div id="sections"></div>
+  </form>
+
+  <footer class="foot">
+    <span>配置来源 <code>config/config.toml</code></span>
+    <span id="foot-state">未加载</span>
+  </footer>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
