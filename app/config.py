@@ -48,6 +48,8 @@ class LLMConfig:
     stream: bool = True
     # 思考超过这么多 token 就掐断，改用无思考模式重答（0 = 不限制）
     thinking_budget: int = 600
+    # 同时向模型发起的请求数上限。必须 1：多槽位并行会让 KV 缓存互相失效，还抢显存。
+    max_concurrency: int = 1
     extra_body: dict[str, Any] = field(default_factory=dict)
 
 

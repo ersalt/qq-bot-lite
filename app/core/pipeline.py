@@ -87,6 +87,7 @@ class ChatService:
         self._first_ms: list[float] = []
         self._group_names: dict[int, tuple[str, float]] = {}
         self._anchors: dict[str, int] = {}
+        self._llm_slot = asyncio.Semaphore(max(cfg.llm.max_concurrency, 1))
 
     # ---------- 入口 ----------
 
@@ -113,6 +114,7 @@ class ChatService:
                 log.debug("展开 @ 失败", exc_info=True)
         preview = event.content.text.strip()[:60] or ("[图片]" if event.content.images else "")
         self.messages_seen += 1
+        at_field = await self._at_field(conn, event)
         if decision.should:
             log.info(
                 "← %s | %s | msg=%s%s%s | %s",
@@ -120,7 +122,7 @@ class ChatService:
                 event.sender_label,
                 event.message_id or "-",
                 f" | 引用={event.reply_id}" if event.reply_id else "",
-                f" | @={','.join(event.at_targets)}" if event.at_targets else "",
+                f" | at={at_field}" if at_field else "",
                 preview,
                 extra={"tag": "in"},
             )
@@ -203,12 +205,15 @@ class ChatService:
             self.store.mark_sent(event.session_key, [message_id])
 
         async def attempt(override: dict | None):
-            return await self.sender.deliver(
-                conn,
-                event,
-                self._pieces(messages, ctx, collected, timing, override),
-                on_sent=_record_sent,
-            )
+            # 全局串行：LM Studio 有多槽位，两条请求并发会落到不同 slot，
+            # 各自的 KV 缓存互相无效，而且抢显存把生成速度从 62 t/s 掉到 22 t/s。
+            async with self._llm_slot:
+                return await self.sender.deliver(
+                    conn,
+                    event,
+                    self._pieces(messages, ctx, collected, timing, override),
+                    on_sent=_record_sent,
+                )
 
         fallback = {
             "reasoning_effort": "none",
@@ -276,7 +281,7 @@ class ChatService:
 
         # 发送的属性信息，和上面的“消息内容”分开，用 key=value 自有格式。
         log.info(
-            "· 发送 session=%s 段=%d 引用=%s @=%s 首字=%s 总计=%.1fs %s%s",
+            "· 发送 session=%s 段=%d 引用=%s at=%s 首字=%s 总计=%.1fs %s%s",
             event.session_key,
             result.sent if result else 0,
             (result.reply_to if result and result.reply_to else "无"),
@@ -385,6 +390,21 @@ class ChatService:
 
     def _label(self, event: MessageEvent) -> str:
         return event.target_label
+
+    async def _at_field(self, conn: OneBotConnection | None, event: MessageEvent) -> str:
+        """日志里的 at= 字段：at 名字(QQ)，和消息正文同一种写法，不出现 @。"""
+        if not event.at_targets:
+            return ""
+        parts: list[str] = []
+        for qq in event.at_targets:
+            name = None
+            if conn is not None and event.group_id is not None and qq.isdigit():
+                try:
+                    name = await self.members.name_of(conn, event.group_id, int(qq))
+                except Exception:  # noqa: BLE001 - 只是日志
+                    name = None
+            parts.append(f"{name}({qq})" if name else qq)
+        return "、".join(parts)
 
     def _history_window(self, session: str):
         """滑动窗口改锚点窗口，让 KV 缓存能命中。
