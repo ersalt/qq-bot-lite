@@ -20,13 +20,16 @@ from .console import ConsoleFormatter, enable_ansi, print_banner, set_title, sta
 from .context.store import MessageStore
 from .core.pipeline import ChatService
 from .extensions.base import ExtensionRegistry
+from .extensions.settings_store import PluginSettingsStore
 from .llm.client import LLMClient
 from .media.images import ImageLoader
 from .onebot.members import MemberDirectory
 from .onebot.server import OneBotServer
 from .persona import Persona
 from .reply.sender import ReplySender
+from .web.plugin_routes import mount_plugin_api, mount_plugin_routers
 from .web.routes import mount_web
+from .web.settings import save_to_toml
 
 log = logging.getLogger(__name__)
 
@@ -107,7 +110,10 @@ def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None
     images = ImageLoader(cfg.images)
     members = MemberDirectory()
     sender = ReplySender(cfg, members)
-    extensions = ExtensionRegistry(cfg.extensions.enabled)
+    extensions = ExtensionRegistry(
+        cfg.extensions.enabled,
+        settings=PluginSettingsStore((config_path or CONFIG_PATH).parent / "plugins.toml"),
+    )
 
     server_holder: dict[str, OneBotServer] = {}
 
@@ -131,6 +137,8 @@ def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None
         get_connection=get_connection,
         get_self_id=get_self_id,
     )
+    # 插件拿到的是这几个运行时对象，别的都不给。
+    extensions.services = {"store": store, "service": service, "cfg": cfg}
     server = OneBotServer(cfg.onebot, service.handle)
     server_holder["server"] = server
 
@@ -164,6 +172,7 @@ def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None
         set_title(f"qq-bot-lite · 启动中 · :{cfg.server.port}")
         print_banner(cfg, __version__)
         await extensions.load()
+        mount_plugin_routers(app, extensions)
         log.info("等待 SnowLuma 接入……", extra={"tag": "conn"})
         status_task = asyncio.create_task(_status_loop())
         title_task = asyncio.create_task(_title_loop())
@@ -233,6 +242,15 @@ def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None
         asyncio.create_task(_stop())
         return JSONResponse({"ok": True})
 
+    def save_enabled(names: list[str]) -> None:
+        path = config_path or CONFIG_PATH
+        try:
+            save_to_toml(path, {"extensions.enabled": names})
+        except OSError:
+            log.exception("写回 [extensions] enabled 失败")
+        cfg.extensions.enabled = list(names)
+
+    mount_plugin_api(app, cfg, extensions, save_enabled)
     mount_web(app, cfg, persona, config_path or CONFIG_PATH)
 
     return app
@@ -241,5 +259,8 @@ def build_app(cfg: Config, db_path: Path | None = None, config_path: Path | None
 def create_app(config_path: Path | None = None) -> FastAPI:
     cfg = load_config(config_path)
     return build_app(cfg, config_path=config_path)
+
+
+
 
 

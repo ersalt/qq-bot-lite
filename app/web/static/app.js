@@ -124,12 +124,17 @@ function render() {
     block.dataset.section = section.id;
     block.hidden = true;
 
-    const grid = el("div", "grid");
-    for (const field of section.fields) {
-      grid.append(buildField(field, state.values[field.key]));
+    if (section.id === "plugins") {
+      block.classList.add("panel-flush");
+      block.append(pluginsPanel());
+    } else {
+      const grid = el("div", "grid");
+      for (const field of section.fields) {
+        grid.append(buildField(field, state.values[field.key]));
+      }
+      block.append(grid);
+      extras(section, block);
     }
-    block.append(grid);
-    extras(section, block);
     host.append(block);
   }
 
@@ -161,6 +166,8 @@ function showSection(id) {
   }
 
   const section = state.schema.find((item) => item.id === target);
+  const actions = document.querySelector(".toolbar-actions");
+  if (actions) actions.hidden = target === "plugins";
   $("page-title").textContent = section ? section.title : "设置";
   $("page-sub").textContent = section?.desc || "改动即时写回 config/config.toml";
 
@@ -405,7 +412,15 @@ async function load() {
   try {
     const response = await fetch("/api/config");
     const payload = await response.json();
-    state.schema = payload.sections;
+    state.schema = [
+      ...payload.sections,
+      {
+        id: "plugins",
+        title: "插件",
+        desc: "app/extensions/ 下的每个模块就是一张卡。带 config 的多一个“设置”，挂上 router 的多一个“打开面板”。",
+        fields: [],
+      },
+    ];
     state.values = { ...payload.values };
     state.original = { ...payload.values };
     state.dirty.clear();
@@ -484,3 +499,5 @@ initTheme();
 load().then(watchSections);
 pollStatus();
 setInterval(pollStatus, 10000);
+
+

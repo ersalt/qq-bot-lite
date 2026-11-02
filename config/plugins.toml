@@ -1,0 +1,6 @@
+# 插件配置。由设置面板写入，也可以手动编辑。
+# 每个插件一个 [section]，键来自插件 MANIFEST 里的 config 声明。
+
+[stats]
+show_latency = true
+window_hours = 24
