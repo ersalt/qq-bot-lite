@@ -19,8 +19,12 @@ from ..onebot.protocol import at_segment, reply_segment, text_segment
 log = logging.getLogger(__name__)
 
 _CQ_RE = re.compile(r"\[CQ:[^\]]*\]")
-# 模型写的提及：统一用 "at 昵称"，兼容旧写法 "@昵称"
-_MENTION_RE = re.compile(r"(?<![A-Za-z0-9_])(?:at\s+|@)([\w\u4e00-\u9fff·]{1,20})")
+# 模型写的提及：统一用 "at 昵称"，兼容旧写法 "@昵称"。
+# 尾巴上的 "(QQ号)" 必须一起吃掉：历史里存的就是 "at 名字(123456)"，模型会照着学，
+# 只匹配名字的话括号里的号会当正文留下来，发出去就成了 "at 贰叔(1140853441) (1140853441)"。
+_MENTION_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?:at\s+|@)([\w\u4e00-\u9fff·]{1,20})(?:[(（](\d{3,12})[)）])?"
+)
 
 
 @dataclass(slots=True)
@@ -169,8 +173,13 @@ class ReplySender:
         for match in _MENTION_RE.finditer(text):
             if found >= self.cfg.reply.max_mentions:
                 break
-            user_id = await self.members.resolve(conn, event.group_id, match.group(1))
-            if user_id is None:
+            explicit = match.group(2)
+            if explicit:
+                # 模型已经自己写了 QQ 号，直接认，不用查名单
+                user_id: int | None = int(explicit)
+            else:
+                user_id = await self.members.resolve(conn, event.group_id, match.group(1))
+            if user_id is None or user_id == event.self_id:
                 continue
             if match.start() > pos:
                 segments.append(text_segment(text[pos : match.start()]))

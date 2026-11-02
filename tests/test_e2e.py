@@ -279,6 +279,63 @@ async def test_mention_in_reply_becomes_real_at(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_mention_with_explicit_qq_not_duplicated(tmp_path: Path) -> None:
+    """模型照着历史写成 “at 饺子(999)” 时，不能把括号里的号再当正文发一遍。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = FastAPI()
+
+    @app.get("/v1/models")
+    async def models() -> dict:
+        return {"data": [{"id": "fake-model"}]}
+
+    @app.post("/v1/chat/completions")
+    async def chat(request: Request):
+        body = await request.json()
+        state.requests.append(body)
+        text = "行，at 饺子(999) 你过来看看。"
+        if not body.get("stream"):
+            return {"choices": [{"message": {"content": text}}]}
+
+        async def gen():
+            for index in range(0, len(text), 4):
+                payload = {"choices": [{"delta": {"content": text[index : index + 4]}}]}
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "mention-qq.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            await ws.send(json.dumps(group_event(4002, "把饺子叫来")))
+            actions = await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert actions, "应该有回复"
+    segments = actions[0]["params"]["message"]
+    ats = [seg for seg in segments if seg["type"] == "at"]
+    assert len(ats) == 1 and ats[0]["data"]["qq"] == "999", f"at 段不对: {segments}"
+    joined = "".join(seg["data"].get("text", "") for seg in segments)
+    assert "999" not in joined, f"QQ 号被当正文重复发了: {joined!r}"
+
+
+@pytest.mark.asyncio
 async def test_inbound_at_expands_to_name_and_id(tmp_path: Path) -> None:
     """收到 “@某人 叫这个 儿子” 时，模型必须看到 at 名字(QQ号)，不然不知道在叫谁。"""
     state = FakeState()
