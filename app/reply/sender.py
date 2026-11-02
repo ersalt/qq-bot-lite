@@ -91,7 +91,7 @@ class ReplySender:
             log.info(
                 "→ %s | %s(%s) | msg=%s | 回复 %s | %s",
                 event.target_label,
-                self.cfg.persona.nickname,
+                event.self_name or self.cfg.persona.nickname,
                 event.self_id,
                 message_id or "-",
                 event.sender_label,

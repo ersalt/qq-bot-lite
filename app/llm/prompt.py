@@ -38,6 +38,7 @@ def scene_line(
     group_name: str | None,
     speaker: str,
     self_id: int | None = None,
+    self_name: str | None = None,
 ) -> str:
     """拼在当前 user 消息前面，随消息变但不会污染 system 前缀。"""
     now = _dt.datetime.now()
@@ -46,9 +47,10 @@ def scene_line(
     else:
         where = "私聊"
     me = f" · 你的QQ {self_id}" if self_id else ""
+    name = self_name or cfg.persona.nickname
     return (
         f"（{now:%H:%M} 周{_WEEKDAYS[now.weekday()]} · {where} · "
-        f"和你说话的是 {speaker} · 你叫 {cfg.persona.nickname}{me}）"
+        f"和你说话的是 {speaker} · 你叫 {name}{me}）"
     )
 
 

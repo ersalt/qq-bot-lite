@@ -107,11 +107,13 @@ class ChatService:
         group_label = await self._group_label(event)
         conn = self.get_connection()
         if conn is not None and event.is_group and event.group_id is not None:
-            # 把 @123456 还原成 @群名片(123456)，模型才知道在叫谁
+            # 把 at 123456 还原成 at 群名片(123456)，模型才知道在叫谁
             try:
                 event.content.text = await self.members.expand(conn, event.group_id, event.content.text)
+                if event.self_id:
+                    event.self_name = await self.members.name_of(conn, event.group_id, event.self_id)
             except Exception:  # noqa: BLE001 - 展开失败不影响回复
-                log.debug("展开 @ 失败", exc_info=True)
+                log.debug("展开 at 失败", exc_info=True)
         preview = event.content.text.strip()[:60] or ("[图片]" if event.content.images else "")
         self.messages_seen += 1
         at_field = await self._at_field(conn, event)
@@ -517,6 +519,7 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
                 group_name=event.group_name,
                 speaker=event.sender_name,
                 self_id=event.self_id or None,
+                self_name=event.self_name,
             )
         )
     if quoted:

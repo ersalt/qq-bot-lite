@@ -25,6 +25,8 @@ class MessageEvent:
     group_name: str | None = None
     sender_card: str | None = None
     sender_nickname: str | None = None
+    # 机器人在这个群里的群名片（可能和人设里的名字不一样）
+    self_name: str | None = None
 
     @property
     def is_group(self) -> bool:
