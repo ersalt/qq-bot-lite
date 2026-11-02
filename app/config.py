@@ -46,6 +46,8 @@ class LLMConfig:
     frequency_penalty: float = 0.0
     timeout: float = 120.0
     stream: bool = True
+    # 思考超过这么多 token 就掐断，改用无思考模式重答（0 = 不限制）
+    thinking_budget: int = 600
     extra_body: dict[str, Any] = field(default_factory=dict)
 
 
@@ -79,7 +81,7 @@ class ReplyConfig:
     segment_max_chars: int = 120
     segment_interval: float = 0.6
     quote: bool = True
-    at_sender: bool = True
+    at_sender: bool = False
     dedupe_window: float = 30.0
 
 

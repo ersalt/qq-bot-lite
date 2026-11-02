@@ -12,8 +12,9 @@ from ..config import Config
 from ..context.store import MessageStore
 from ..context.window import build_history
 from ..extensions.base import ExtensionRegistry, HookContext
-from ..llm.client import LLMClient, LLMError
+from ..llm.client import LLMClient, LLMError, ThinkingBudgetExceeded
 from ..llm.prompt import build_messages, build_system_prompt
+from ..llm.tokens import estimate_text_tokens
 from ..media.images import ImageLoader
 from ..onebot.client import OneBotConnection
 from ..onebot.events import MessageEvent
@@ -198,13 +199,33 @@ class ChatService:
         def _record_sent(message_id: str) -> None:
             self.store.mark_sent(event.session_key, [message_id])
 
-        try:
-            result = await self.sender.deliver(
+        async def attempt(override: dict | None):
+            return await self.sender.deliver(
                 conn,
                 event,
-                self._pieces(messages, ctx, collected, timing),
+                self._pieces(messages, ctx, collected, timing, override),
                 on_sent=_record_sent,
             )
+
+        fallback = {
+            "reasoning_effort": "none",
+            "max_tokens": min(self.cfg.llm.max_tokens, 512),
+        }
+        used_fallback = False
+        try:
+            result = await attempt(None)
+        except ThinkingBudgetExceeded as exc:
+            used_fallback = True
+            log.warning(
+                "思考超预算 %d>%d，掐断后改用无思考模式重答 | %s | %s | msg=%s",
+                exc.tokens,
+                exc.budget,
+                self._label(event),
+                event.sender_label,
+                event.message_id or "-",
+                extra={"tag": "warn"},
+            )
+            result = await attempt(fallback)
         except LLMError as exc:
             log.error("模型请求失败: %s", exc)
             if collected:
@@ -216,12 +237,11 @@ class ChatService:
                 self._store_reply(event, collected)
             return
 
-        self._cooldown[event.session_key] = time.time()
-        if collected:
-            self._store_reply(event, collected)
-        else:
+        # 思考把配额吃光、正文一个字都没有：换无思考模式兜一次。
+        if result.sent == 0 and not collected and not used_fallback:
+            used_fallback = True
             log.warning(
-                "模型只有思考没有正文 | %s | %s | msg=%s | max_tokens=%d | reasoning_tokens=%s | finish_reason=%s",
+                "模型只有思考没有正文，改用无思考模式重答 | %s | %s | msg=%s | max_tokens=%d | reasoning_tokens=%s | finish_reason=%s",
                 self._label(event),
                 event.sender_label,
                 event.message_id or "-",
@@ -230,21 +250,39 @@ class ChatService:
                 self.llm.last_finish_reason or "-",
                 extra={"tag": "warn"},
             )
+            try:
+                result = await attempt(fallback)
+            except (LLMError, ThinkingBudgetExceeded) as exc:
+                log.error("兜底重答也失败了: %s", exc)
+                result = None
+
+        self._cooldown[event.session_key] = time.time()
+        if collected:
+            self._store_reply(event, collected)
+        elif result is None or result.sent == 0:
+            log.warning(
+                "重答后仍然没有正文，这条没有发出去 | %s | %s | msg=%s",
+                self._label(event),
+                event.sender_label,
+                event.message_id or "-",
+                extra={"tag": "warn"},
+            )
         self.replies_sent += 1
         if timing.first_piece is not None:
             self._first_ms.append((timing.first_piece - timing.start) * 1000)
 
+        # 发送的属性信息，和上面的“消息内容”分开，用 key=value 自有格式。
         log.info(
-            "→ %s | 回复 %s | %d 段%s%s | 首字 %s | 总计 %.1fs%s",
-            self._label(event),
-            event.sender_label,
-            result.sent,
-            f" | 引用={result.reply_to}" if result.reply_to else (" | 引用=无" if event.is_group else ""),
-            f" | @={','.join(result.at_targets)}" if result.at_targets else (" | @=无" if event.is_group else ""),
+            "· 发送 session=%s 段=%d 引用=%s @=%s 首字=%s 总计=%.1fs %s%s",
+            event.session_key,
+            result.sent if result else 0,
+            (result.reply_to if result and result.reply_to else "无"),
+            (",".join(result.at_targets) if result and result.at_targets else "无"),
             f"{timing.first_ms:.0f}ms" if timing.first_ms is not None else "未记录",
             timing.total_ms / 1000,
-            _usage_text(self.llm),
-            extra={"tag": "out"},
+            _usage_text(self.llm).strip(),
+            " 兜底=无思考" if used_fallback else "",
+            extra={"tag": "stat"},
         )
 
     async def _pieces(
@@ -253,9 +291,10 @@ class ChatService:
         ctx: HookContext,
         collected: list[str],
         timing: _Timing,
+        override: dict | None = None,
     ) -> AsyncIterator[str]:
         if not self.cfg.reply.segments:
-            text = await self._complete(messages)
+            text = await self._complete(messages, override)
             if text.strip():
                 timing.mark_first()
                 out = await self.extensions.after_reply(ctx, text.strip())
@@ -264,7 +303,7 @@ class ChatService:
             return
 
         segmenter = Segmenter(self.cfg.reply.segment_max_chars, self.cfg.reply.max_segments)
-        async for delta in self._deltas(messages):
+        async for delta in self._deltas(messages, override):
             timing.mark_first()
             for piece in segmenter.feed(delta):
                 out = await self.extensions.after_reply(ctx, piece)
@@ -275,17 +314,32 @@ class ChatService:
             collected.append(out)
             yield out
 
-    async def _deltas(self, messages: list[dict]) -> AsyncIterator[str]:
+    async def _deltas(self, messages: list[dict], override: dict | None = None) -> AsyncIterator[str]:
         if not self.cfg.llm.stream:
-            text = await self._complete(messages)
+            text = await self._complete(messages, override)
             if text:
                 yield text
             return
-        async for delta in self.llm.stream(messages):
+        guard = self._reasoning_guard()
+        async for delta in self.llm.stream(messages, override=override, on_reasoning=guard):
             yield delta
 
-    async def _complete(self, messages: list[dict]) -> str:
-        return await self.llm.complete(messages)
+    def _reasoning_guard(self):
+        """思考超过预算就抛异常掐断流；返回 None 表示不限制。"""
+        budget = self.cfg.llm.thinking_budget
+        if budget <= 0:
+            return None
+        state = {"tokens": 0}
+
+        def guard(chunk: str) -> None:
+            state["tokens"] += estimate_text_tokens(chunk)
+            if state["tokens"] > budget:
+                raise ThinkingBudgetExceeded(state["tokens"], budget)
+
+        return guard
+
+    async def _complete(self, messages: list[dict], override: dict | None = None) -> str:
+        return await self.llm.complete(messages, override=override)
 
     # ---------- 杂项 ----------
 
@@ -375,7 +429,7 @@ def _usage_text(llm: LLMClient) -> str:
     completion = usage.get("completion_tokens")
     details = usage.get("completion_tokens_details") or {}
     reasoning = details.get("reasoning_tokens")
-    text = f" | tokens {prompt}/{completion if completion is not None else '?'}"
+    text = f"tokens {prompt}/{completion if completion is not None else '?'}"
     if reasoning:
         answer = ""
         if isinstance(completion, int) and isinstance(reasoning, int):

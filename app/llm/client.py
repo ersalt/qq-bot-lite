@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
 import httpx
 
@@ -15,6 +15,15 @@ log = logging.getLogger(__name__)
 
 class LLMError(RuntimeError):
     pass
+
+
+class ThinkingBudgetExceeded(RuntimeError):
+    """思考量超过预算，主动掐断，交给上层用无思考模式重答。"""
+
+    def __init__(self, tokens: int, budget: int):
+        self.tokens = tokens
+        self.budget = budget
+        super().__init__(f"思考 {tokens} tokens 超过预算 {budget}")
 
 
 class LLMClient:
@@ -32,7 +41,12 @@ class LLMClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    def _payload(self, messages: list[dict[str, Any]], stream: bool) -> dict[str, Any]:
+    def _payload(
+        self,
+        messages: list[dict[str, Any]],
+        stream: bool,
+        override: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.cfg.model,
             "messages": messages,
@@ -45,13 +59,15 @@ class LLMClient:
         }
         if self.cfg.extra_body:
             payload.update(self.cfg.extra_body)
+        if override:
+            payload.update(override)
         if stream:
             # LM Studio 默认流式不返回 usage，开了才能看到 reasoning token 数。
             payload.setdefault("stream_options", {"include_usage": True})
         return payload
 
-    async def complete(self, messages: list[dict[str, Any]]) -> str:
-        payload = self._payload(messages, stream=False)
+    async def complete(self, messages: list[dict[str, Any]], override: dict[str, Any] | None = None) -> str:
+        payload = self._payload(messages, stream=False, override=override)
         try:
             resp = await self._client.post("/chat/completions", json=payload)
         except httpx.HTTPError as exc:
@@ -66,8 +82,13 @@ class LLMClient:
         except (KeyError, IndexError) as exc:
             raise LLMError(f"模型返回结构异常: {json.dumps(data, ensure_ascii=False)[:500]}") from exc
 
-    async def stream(self, messages: list[dict[str, Any]]) -> AsyncIterator[str]:
-        payload = self._payload(messages, stream=True)
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],
+        override: dict[str, Any] | None = None,
+        on_reasoning: Callable[[str], None] | None = None,
+    ) -> AsyncIterator[str]:
+        payload = self._payload(messages, stream=True, override=override)
         self.last_finish_reason = None
         try:
             async with self._client.stream("POST", "/chat/completions", json=payload) as resp:
@@ -90,6 +111,9 @@ class LLMClient:
                         if choice.get("finish_reason"):
                             self.last_finish_reason = choice["finish_reason"]
                         delta = choice.get("delta") or {}
+                        think = delta.get("reasoning_content")
+                        if think and on_reasoning is not None:
+                            on_reasoning(str(think))
                         content = delta.get("content")
                         if content:
                             yield str(content)

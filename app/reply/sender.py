@@ -78,6 +78,17 @@ class ReplySender:
                 result.message_ids.append(message_id)
                 if on_sent:
                     on_sent(message_id)
+            # 发出去的内容按“普通消息”格式打一条，和入站同构，方便对着看。
+            log.info(
+                "→ %s | %s(%s) | msg=%s | 回复 %s | %s",
+                event.target_label,
+                self.cfg.persona.nickname,
+                event.self_id,
+                message_id or "-",
+                event.sender_label,
+                text,
+                extra={"tag": "out"},
+            )
             first = False
             result.sent += 1
             if interval > 0:

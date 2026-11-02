@@ -162,6 +162,61 @@ async def test_quote_reply_without_at_triggers(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_empty_reply_falls_back_without_thinking(tmp_path: Path) -> None:
+    """思考把配额吃光、正文为空时，要自动换无思考模式重答一次。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = FastAPI()
+
+    @app.get("/v1/models")
+    async def models() -> dict:
+        return {"data": [{"id": "fake-model"}]}
+
+    @app.post("/v1/chat/completions")
+    async def chat(request: Request):
+        body = await request.json()
+        state.requests.append(body)
+        text = "" if len(state.requests) == 1 else "兜底回复来了。"
+        if not body.get("stream"):
+            return {"choices": [{"message": {"content": text}}], "usage": {"completion_tokens": 0}}
+
+        async def gen():
+            for index in range(0, len(text), 3):
+                payload = {"choices": [{"delta": {"content": text[index : index + 3]}}]}
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "fallback.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            await ws.send(json.dumps(group_event(3001, "说点什么")))
+            actions = await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert len(state.requests) == 2, "空回复后应该重答一次"
+    assert state.requests[1].get("reasoning_effort") == "none", "重答要关思考"
+    assert actions, "重答的内容应该发出去"
+    assert "兜底回复" in json.dumps(actions, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
 async def test_bare_at_without_text_still_replies(tmp_path: Path) -> None:
     """只 @ 不说话也算点名，这是群里最常见的一种“叫一下”。"""
     state = FakeState()
@@ -209,6 +264,7 @@ async def test_group_reply_has_quote_at_and_segments(tmp_path: Path) -> None:
     cfg.onebot.access_token = TOKEN
     cfg.reply.segment_interval = 0.0
     cfg.reply.max_segments = 3
+    cfg.reply.at_sender = True  # 默认关了，这条测试专门验证 @ 能力
     cfg.trigger.cooldown = 0.0
 
     llm_server = await start_server(make_fake_llm(state), llm_port)
