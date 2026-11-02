@@ -477,7 +477,7 @@ def _usage_text(llm: LLMClient) -> str:
     completion = usage.get("completion_tokens")
     details = usage.get("completion_tokens_details") or {}
     reasoning = details.get("reasoning_tokens")
-    text = f"tokens {prompt}/{completion if completion is not None else '?'}"
+    text = f"tokens in={prompt} out={completion if completion is not None else '?'}"
     if reasoning:
         answer = ""
         if isinstance(completion, int) and isinstance(reasoning, int):
