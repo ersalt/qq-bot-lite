@@ -26,6 +26,30 @@ def _render(message: StoredMessage, is_group: bool, timestamps: bool) -> str:
     return text
 
 
+def keep_addressed(messages: list[StoredMessage]) -> list[StoredMessage]:
+    """只留“它接过的轮次”，外加最后一段还没回应的群聊。
+
+    AstrBot 的历史就是这么攒的：只有被它接了的话才进对话历史，群里的闲话不进
+    （它以一条一次性的转录块补上，注入完就删）。我们原来是全员闲聊全塞进去，
+    模型每轮都要先把几十条跟它无关的话读一遍再判断谁在说什么 —— 实测思考量
+    会从 100 上下涨到 267~514，正好是那 4~6 秒的来源。
+    """
+    kept: list[StoredMessage] = []
+    for index, message in enumerate(messages):
+        following = messages[index + 1] if index + 1 < len(messages) else None
+        if message.role == "assistant" or (following is not None and following.role == "assistant"):
+            kept.append(message)
+
+    # 末尾那段还没被回应的群聊保留，否则模型不知道“刚才聊到哪了”。
+    # 这一段是它这次要接的上下文，和 AstrBot 的 backlog 块等价。
+    if messages and messages[-1].role != "assistant":
+        start = len(messages) - 1
+        while start > 0 and messages[start - 1].role != "assistant":
+            start -= 1
+        kept.extend(messages[start:])
+    return kept
+
+
 def build_history(
     messages: list[StoredMessage],
     cfg: ContextConfig,

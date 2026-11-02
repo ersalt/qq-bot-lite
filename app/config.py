@@ -67,6 +67,10 @@ class ContextConfig:
     max_tokens: int = 6000
     include_bot_replies: bool = True
     merge_same_role: bool = True
+    # 只把“它接过的轮次”写进历史，群里跟它无关的闲话不进。
+    # 实测全员闲聊全塞进去时模型思考 267~514 token（9~13 秒），
+    # 只留问答轮次后能压到 100 上下（4~6 秒），和 AstrBot 的做法一致。
+    only_addressed: bool = True
     # 历史行前面加 [HH:MM]，模型才知道“刚才/两小时前”
     timestamps: bool = True
 

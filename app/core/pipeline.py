@@ -10,7 +10,7 @@ from typing import AsyncIterator, Callable
 
 from ..config import Config
 from ..context.store import MessageStore
-from ..context.window import build_history
+from ..context.window import build_history, keep_addressed
 from ..extensions.base import ExtensionRegistry, HookContext
 from ..llm.client import LLMClient, LLMError, ThinkingBudgetExceeded
 from ..llm.prompt import build_messages, build_system_prompt, scene_line
@@ -423,6 +423,8 @@ class ChatService:
         hard = int(limit * 1.25)
         anchor = self._anchors.get(session, 0)
         messages = self.store.after(session, anchor, hard + 1)
+        if self.cfg.context.only_addressed:
+            messages = keep_addressed(messages)
         if len(messages) <= hard:
             return messages
 
@@ -528,3 +530,4 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
     if text:
         lines.append(text)
     return "\n".join(lines)
+
