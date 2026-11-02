@@ -21,6 +21,8 @@
 
 ### 新增
 
+- 新增 `[llm] reasoning_effort`（默认 `low`），直接透传给 LM Studio。同提示词对照：默认档思考 327/323/676 token，`low` 档 196/187/462，按 17ms/token 算每条省 3~4 秒，而且不用多发一次请求。
+
 - 历史消息行加 `[HH:MM]` 时间戳（`[context] timestamps`），模型才能判断“刚才”“两小时前”。对齐 AstrBot 的 `[昵称/时间]` 转录格式。
 
 - 模型写 `at 昵称` 时会查群成员并换成真正的 OneBot at 段（`resolve_mentions`，名片优先，缓存 10 分钟，单条最多 3 个）。之前这种写法只是普通文字，QQ 不会真的提到人。

@@ -46,6 +46,10 @@ class LLMConfig:
     frequency_penalty: float = 0.0
     timeout: float = 120.0
     stream: bool = True
+    # LM Studio 的思考档位：none / low / medium / high，空字符串 = 不传（用模板默认）。
+    # 实测同一套提示词、同样三个问题：默认档思考 327/323/676，low 档 196/187/462。
+    # 生成 17ms/token，等于每条省 2~4 秒，而且比"掐断重答"省掉一次完整请求。
+    reasoning_effort: str = "low"
     # 思考超过这么多 token 就掐断，改用无思考模式重答（0 = 不限制）。
     # 实测模型在这个群的上下文里常常自然收尾在 600~700 token；原来设 600 等于
     # 在终点线前掐断：扔掉十几秒思考，再花 2.5 秒重发一次请求（LM Studio 每请求

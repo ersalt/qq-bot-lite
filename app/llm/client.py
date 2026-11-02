@@ -59,6 +59,8 @@ class LLMClient:
         }
         if self.cfg.extra_body:
             payload.update(self.cfg.extra_body)
+        if self.cfg.reasoning_effort:
+            payload["reasoning_effort"] = self.cfg.reasoning_effort
         if override:
             payload.update(override)
         if stream:

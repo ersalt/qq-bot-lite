@@ -43,14 +43,20 @@ def build_history(
         items.append({"role": message.role, "content": text})
 
     # token 预算：从新到旧保留，超预算就丢最旧的。
+    # 注意这里是"一次退到 60%"，不是一条一条挤：窗口每轮只掉一条的话前缀每轮都在动，
+    # llama.cpp 的前缀缓存就永远命不中，预填充等于每次全量重来。
     budget = max(cfg.max_tokens, 256)
-    kept: list[dict[str, Any]] = []
-    used = 0
-    for item in reversed(items):
-        cost = estimate_text_tokens(item["content"]) + 4
-        if kept and used + cost > budget:
-            break
-        kept.append(item)
-        used += cost
-    kept.reverse()
-    return kept
+    total = sum(estimate_text_tokens(item["content"]) + 4 for item in items)
+    if total > budget:
+        target = int(budget * 0.6)
+        kept: list[dict[str, Any]] = []
+        used = 0
+        for item in reversed(items):
+            cost = estimate_text_tokens(item["content"]) + 4
+            if kept and used + cost > target:
+                break
+            kept.append(item)
+            used += cost
+        kept.reverse()
+        return kept
+    return items
