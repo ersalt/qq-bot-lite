@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import ssl
 from typing import Any, AsyncIterator, Callable
 
 import httpx
@@ -11,6 +12,22 @@ import httpx
 from ..config import LLMConfig
 
 log = logging.getLogger(__name__)
+
+# Windows 上 ssl.create_default_context 要扫一遍证书库，实测 600~800ms。
+# httpx 每次建客户端都会造一个，切个模型配置就卡一秒。这里只造一次，之后复用。
+_SSL_CONTEXT: ssl.SSLContext | None = None
+
+
+def _ssl_context() -> ssl.SSLContext:
+    global _SSL_CONTEXT
+    if _SSL_CONTEXT is None:
+        try:
+            import certifi
+
+            _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+        except Exception:  # noqa: BLE001 - 没有 certifi 就用系统证书库
+            _SSL_CONTEXT = ssl.create_default_context()
+    return _SSL_CONTEXT
 
 
 class LLMError(RuntimeError):
@@ -31,28 +48,39 @@ class LLMClient:
         self.cfg = cfg
         self.last_usage: dict[str, Any] | None = None
         self.last_finish_reason: str | None = None
-        self._client = httpx.AsyncClient(
-            base_url=cfg.base_url.rstrip("/"),
-            timeout=httpx.Timeout(connect=10.0, read=cfg.timeout, write=30.0, pool=10.0),
+        self._transport = self._fingerprint()
+        self._client = self._build()
+
+    def _fingerprint(self) -> tuple[str, str]:
+        return (self.cfg.base_url.rstrip("/"), self.cfg.api_key or "")
+
+    def _build(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=self._fingerprint()[0],
+            timeout=httpx.Timeout(connect=10.0, read=self.cfg.timeout, write=30.0, pool=10.0),
             trust_env=False,  # 本机模型，绝不走系统代理
-            headers={"Authorization": f"Bearer {cfg.api_key}"} if cfg.api_key else {},
+            verify=_ssl_context(),
+            headers={"Authorization": f"Bearer {self.cfg.api_key}"} if self.cfg.api_key else {},
         )
 
     async def aclose(self) -> None:
         await self._client.aclose()
 
     async def reload(self) -> None:
-        """切换模型配置后重建连接池：base_url / api_key 是建客户端时抓走的。"""
+        """切换模型配置后重建连接池。
+
+        base_url / api_key 没变就不重建：建一个 httpx 客户端要重新摸 SSL 上下文，
+        Windows 上要 600ms 以上，切个配置卡一秒不值得。
+        """
+        fingerprint = self._fingerprint()
+        if fingerprint == self._transport:
+            return
         try:
             await self._client.aclose()
         except Exception:  # noqa: BLE001 - 关不掉也要继续
             log.debug("关闭旧连接池失败", exc_info=True)
-        self._client = httpx.AsyncClient(
-            base_url=self.cfg.base_url.rstrip("/"),
-            timeout=httpx.Timeout(connect=10.0, read=self.cfg.timeout, write=30.0, pool=10.0),
-            trust_env=False,
-            headers={"Authorization": f"Bearer {self.cfg.api_key}"} if self.cfg.api_key else {},
-        )
+        self._transport = fingerprint
+        self._client = self._build()
 
     def _payload(
         self,

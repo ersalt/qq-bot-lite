@@ -174,6 +174,28 @@ function makeSortable(container) {
 function cardOrder(container) {
   return Array.from(container.querySelectorAll(".entity-card")).map((card) => card.dataset.name);
 }
+
+function askDelete(card, onConfirm) {
+  if (card.classList.contains("confirming")) return;
+  card.classList.add("confirming");
+  const box = el("div", "entity-confirm");
+  const text = el("span", "entity-confirm-text", "确定删除？");
+  const yes = el("button", "btn btn-sm entity-confirm-yes", "删除");
+  yes.type = "button";
+  const no = el("button", "btn btn-sm", "取消");
+  no.type = "button";
+  box.append(text, yes, no);
+  card.append(box);
+  yes.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onConfirm();
+  });
+  no.addEventListener("click", (event) => {
+    event.stopPropagation();
+    box.remove();
+    card.classList.remove("confirming");
+  });
+}
 function entityCard({ title, meta, active, badge, onActivate, onDelete }) {
   // 用 div 而不是 button：button 在 Chrome 里拖拽行为不稳定，
   // 而且 draggable 属性默认是关的，dragstart 根本不会触发。
@@ -205,7 +227,7 @@ function entityCard({ title, meta, active, badge, onActivate, onDelete }) {
     del.setAttribute("title", "删除");
     del.addEventListener("click", (event) => {
       event.stopPropagation();
-      onDelete();
+      askDelete(card, onDelete);
     });
     card.append(del);
   }
@@ -565,3 +587,4 @@ async function savePersonaOrder() {
     toast(`排序保存失败：${error.message}`, "bad");
   }
 }
+
