@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
+import sys
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -63,6 +64,8 @@ class ExtensionRegistry:
         self.extensions: list[Extension] = []
         self.manifests: dict[str, PluginManifest] = {}
         self.routers: dict[str, Any] = {}
+        self.pages: dict[str, Path | None] = {}
+        self.errors: dict[str, str] = {}
         self._roots: dict[str, Path] = {}
 
     # ---------- 清单 ----------
@@ -102,6 +105,8 @@ class ExtensionRegistry:
             item["enabled"] = name in self.enabled
             item["settings"] = self.settings_of(name, defaults_from(manifest.config))
             item["loaded"] = any(getattr(ext, "name", None) == name for ext in self.extensions)
+            item["last_error"] = self.errors.get(name) or item.get("error")
+            item["has_page"] = bool(self.pages.get(name))
             items.append(item)
         items.sort(key=lambda item: (not item["enabled"], item["title"].lower()))
         return items
@@ -111,6 +116,8 @@ class ExtensionRegistry:
     async def load(self, names: list[str] | None = None) -> None:
         self.extensions.clear()
         self.routers.clear()
+        self.pages.clear()
+        self.errors.clear()
         self.scan()
         for name in names if names is not None else self.enabled:
             await self._load_one(name)
@@ -120,16 +127,24 @@ class ExtensionRegistry:
         manifest = self.manifests.get(name) or read_manifest(root, name)
         if manifest.error:
             log.error("插件 %s 无法加载: %s", name, manifest.error)
+            self.errors[name] = manifest.error
             return
-        path = entry_path(self.root_of(name), name)
+        path = entry_path(root, name, manifest.entry)
         try:
-            spec = importlib.util.spec_from_file_location(f"qqbotlite_plugin_{name}", path)
+            # 让入口所在目录变成包的搜索路径，插件就能 from .core import xxx
+            spec = importlib.util.spec_from_file_location(
+                f"qqbotlite_plugin_{name}",
+                path,
+                submodule_search_locations=[str(path.parent)],
+            )
             if spec is None or spec.loader is None:
                 raise ImportError("无法创建模块")
             module = importlib.util.module_from_spec(spec)
+            sys.modules[f"qqbotlite_plugin_{name}"] = module
             spec.loader.exec_module(module)
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             log.exception("插件加载失败: %s", name)
+            self.errors[name] = f"加载失败：{exc}"
             return
 
         data_dir = self.plugin_data_dir(name)
@@ -143,6 +158,8 @@ class ExtensionRegistry:
             settings=self.settings_of(name, defaults_from(manifest.config)),
             services=self.services,
             data_dir=data_dir,
+            panel_url=manifest.panel,
+            log=logging.getLogger(f"plugin.{name}"),
         )
         factory = getattr(module, "setup", None)
         if factory is not None:
@@ -150,12 +167,14 @@ class ExtensionRegistry:
                 extension = factory(context)
                 if inspect.isawaitable(extension):
                     extension = await extension
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 log.exception("插件初始化失败: %s", name)
+                self.errors[name] = f"初始化失败：{exc}"
                 extension = None
             if extension is not None:
                 extension.ctx = context
                 self.extensions.append(extension)
+                await self._lifecycle(extension, "on_start", name)
                 log.info("插件已启用: %s", getattr(extension, "name", name))
         elif getattr(module, "Extension", None) is not None:
             log.warning("插件 %s 没有 setup()，钩子不会被调用", name)
@@ -163,6 +182,30 @@ class ExtensionRegistry:
         router = getattr(module, "router", None)
         if router is not None:
             self.routers[name] = router
+
+        # 页面约定：插件目录下有 pages/index.html 就能访问 /plugins/<id>/
+        page = root / name / "pages" / "index.html"
+        self.pages[name] = page if page.exists() else None
+
+    async def _lifecycle(self, extension: Any, hook: str, name: str) -> None:
+        handler = getattr(extension, hook, None)
+        if handler is None:
+            return
+        try:
+            result = handler()
+            if inspect.isawaitable(result):
+                await result
+        except Exception:  # noqa: BLE001 - 生命周期失败不能拦住别人的插件
+            log.exception("插件 %s %s 异常", name, hook)
+            self.errors[name] = f"{hook} 异常"
+
+    async def shutdown(self) -> None:
+        """关进程时收尾：先给插件机会自己收，再统一取消它们起的任务。"""
+        for extension in self.extensions:
+            await self._lifecycle(extension, "on_stop", getattr(extension, "name", "?"))
+            if extension.ctx is not None:
+                await extension.ctx.shutdown()
+        self.extensions.clear()
 
     async def set_enabled(self, name: str, enabled: bool) -> None:
         if enabled and name not in self.enabled:
@@ -181,22 +224,28 @@ class ExtensionRegistry:
                 extension.ctx.settings = dict(merged)
         return merged
 
+    def _mark_error(self, name: str, exc: Exception) -> None:
+        """记下第一次出错，面板上能看见。"""
+        self.errors.setdefault(name, f"{type(exc).__name__}: {exc}")
+
     # ---------- 钩子 ----------
 
     async def on_message(self, ctx: HookContext) -> None:
         for extension in self.extensions:
             try:
                 await extension.on_message(ctx)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 log.exception("插件 %s on_message 异常", extension.name)
+                self._mark_error(extension.name, exc)
 
     async def collect_system_prompt(self, ctx: HookContext) -> list[str]:
         sections: list[str] = []
         for extension in self.extensions:
             try:
                 text = await extension.system_prompt(ctx)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 log.exception("插件 %s system_prompt 异常", extension.name)
+                self._mark_error(extension.name, exc)
                 continue
             if text and text.strip():
                 sections.append(text.strip())
@@ -206,8 +255,12 @@ class ExtensionRegistry:
         for extension in self.extensions:
             try:
                 text = await extension.after_reply(ctx, text)
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001
                 log.exception("插件 %s after_reply 异常", extension.name)
+                self._mark_error(extension.name, exc)
         return text
+
+
+
 
 

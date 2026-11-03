@@ -18,17 +18,36 @@ log = logging.getLogger(__name__)
 
 def mount_plugin_routers(app: FastAPI, registry: ExtensionRegistry) -> None:
     """把插件自带的面板挂上去。重复调用只会补挂新增的。"""
-    mounted: set[str] = getattr(app.state, "plugin_routers", set())
+    from fastapi.responses import FileResponse
+
+    mounted: set[str] = getattr(app.state, "plugin_pages", set())
+    for name, page in registry.pages.items():
+        if not page or name in mounted:
+            continue
+        try:
+            app.add_api_route(
+                f"/plugins/{name}/",
+                lambda page=page: FileResponse(page, media_type="text/html"),
+                methods=["GET"],
+                include_in_schema=False,
+            )
+            mounted.add(name)
+            log.info("插件页面已挂载: /plugins/%s/", name)
+        except Exception:  # noqa: BLE001
+            log.exception("挂载插件页面失败: %s", name)
+    app.state.plugin_pages = mounted
+
+    mounted_routers: set[str] = getattr(app.state, "plugin_routers", set())
     for name, router in registry.routers.items():
-        if name in mounted:
+        if name in mounted_routers:
             continue
         try:
             app.include_router(router, prefix=f"/plugins/{name}", tags=[f"plugin:{name}"])
-            mounted.add(name)
+            mounted_routers.add(name)
             log.info("插件面板已挂载: /plugins/%s", name)
         except Exception:  # noqa: BLE001
             log.exception("挂载插件面板失败: %s", name)
-    app.state.plugin_routers = mounted
+    app.state.plugin_routers = mounted_routers
 
 
 def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, save_enabled) -> None:
@@ -104,6 +123,7 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
 
         merged = registry.update_settings(name, {**defaults, **clean})
         return JSONResponse({"ok": True, "settings": merged, "message": "设置已保存"})
+
 
 
 

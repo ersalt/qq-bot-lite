@@ -110,6 +110,7 @@ def build_app(
     db_path: Path | None = None,
     config_path: Path | None = None,
     plugin_data_dir: Path | None = None,
+    plugin_dir: Path | None = None,
     persona_dir: Path | None = None,
 ) -> FastAPI:
     store = MessageStore(db_path or (ROOT / "data" / "app.db"))
@@ -121,6 +122,7 @@ def build_app(
     extensions = ExtensionRegistry(
         cfg.extensions.enabled,
         data_dir=plugin_data_dir,
+        plugin_dir=plugin_dir,
         extra_dirs=[Path(item) for item in cfg.extensions.dirs if str(item).strip()],
     )
 
@@ -193,6 +195,7 @@ def build_app(
             set_title(f"qq-bot-lite · 已停止 · :{cfg.server.port}")
             log.info("正在关闭……", extra={"tag": "sys"})
             await server.shutdown()
+            await extensions.shutdown()
             await llm.aclose()
             await images.aclose()
             store.close()
@@ -202,6 +205,7 @@ def build_app(
     app.state.cfg = cfg
     app.state.store = store
     app.state.server = server
+    app.state.plugin_registry = extensions
 
     @app.websocket(cfg.onebot.path)
     async def onebot_ws(websocket: WebSocket) -> None:  # noqa: ANN202
@@ -270,6 +274,8 @@ def build_app(
 def create_app(config_path: Path | None = None) -> FastAPI:
     cfg = load_config(config_path)
     return build_app(cfg, config_path=config_path)
+
+
 
 
 

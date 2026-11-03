@@ -25,7 +25,7 @@ quote = true
 """
 
 
-def _client(tmp_path: Path) -> tuple[TestClient, Path]:
+def _client(tmp_path: Path, plugin_dir: Path | None = None) -> tuple[TestClient, Path]:
     path = tmp_path / "config.toml"
     path.write_text(BASE_TOML, encoding="utf-8")
     cfg = load_config(path)
@@ -39,6 +39,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, Path]:
         config_path=path,
         plugin_data_dir=tmp_path / "plugin_data",
         persona_dir=personas,
+        plugin_dir=plugin_dir,
     )
     return TestClient(app), path
 
@@ -261,3 +262,75 @@ def test_persona_template_is_hidden_and_copied(tmp_path: Path) -> None:
     text = (tmp_path / "personas" / "新人.md").read_text(encoding="utf-8")
     template = (tmp_path / "personas" / "_template.md").read_text(encoding="utf-8")
     assert text == template.replace("人设名", "新人")
+
+def test_plugin_api_too_new_is_rejected(tmp_path: Path) -> None:
+    """插件声明的 api 高于本机支持，必须显示成错误卡而不是硬加载。"""
+    plugin_dir = tmp_path / "plugins" / "future"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "plugin.toml").write_text('title = "未来插件"\napi = 99\n', encoding="utf-8")
+    (plugin_dir / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        plugins = client.get("/api/plugins").json()["plugins"]
+        item = next(p for p in plugins if p["name"] == "future")
+        assert item["error"] and "api" in item["error"]
+
+
+def test_plugin_package_import_and_page(tmp_path: Path) -> None:
+    """入口按包加载：能 from .core 导入；目录里有 pages/index.html 就能访问。"""
+    root = tmp_path / "plugins" / "demo_pkg"
+    (root / "core").mkdir(parents=True)
+    (root / "pages").mkdir()
+    (root / "plugin.toml").write_text('title = "包插件"\npanel = "/plugins/demo_pkg"\n', encoding="utf-8")
+    (root / "core" / "__init__.py").write_text("", encoding="utf-8")
+    (root / "core" / "greet.py").write_text('WORD = "hello"\n', encoding="utf-8")
+    (root / "pages" / "index.html").write_text("<html><body>demo page</body></html>", encoding="utf-8")
+    (root / "plugin.py").write_text(
+        "from app.pluginkit.registry import Extension\n"
+        "from .core.greet import WORD\n\n"
+        "class Demo(Extension):\n"
+        "    name = 'demo_pkg'\n"
+        "    async def system_prompt(self, ctx):\n"
+        "        return WORD\n\n"
+        "def setup(ctx):\n"
+        "    return Demo()\n",
+        encoding="utf-8",
+    )
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        toggled = client.post("/api/plugins/demo_pkg/enabled", json={"enabled": True})
+        assert toggled.status_code == 200, toggled.text
+        page = client.get("/plugins/demo_pkg/")
+        assert page.status_code == 200 and "demo page" in page.text
+
+
+def test_plugin_hook_error_is_surfaced(tmp_path: Path) -> None:
+    """钩子抛异常要被记到 last_error，而不是只写日志。"""
+    root = tmp_path / "plugins" / "boom"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text('title = "会炸的插件"\n', encoding="utf-8")
+    (root / "plugin.py").write_text(
+        "from app.pluginkit.registry import Extension\n\n"
+        "class Boom(Extension):\n"
+        "    name = 'boom'\n"
+        "    async def on_message(self, ctx):\n"
+        "        raise RuntimeError('炸了')\n\n"
+        "def setup(ctx):\n"
+        "    return Boom()\n",
+        encoding="utf-8",
+    )
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        client.post("/api/plugins/boom/enabled", json={"enabled": True})
+        registry = client.app.state.plugin_registry
+        from app.pluginkit.registry import HookContext
+
+        hook = HookContext(event=None, session_key="group:1", is_group=True)
+        client.portal.call(registry.on_message, hook)
+        plugins = client.get("/api/plugins").json()["plugins"]
+        item = next(p for p in plugins if p["name"] == "boom")
+        assert item["last_error"], "钩子异常没有反映到面板数据里"
+
