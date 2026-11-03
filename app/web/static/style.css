@@ -897,3 +897,26 @@ select {
   transform: scale(.98);
 }
 .entity-cards.sorting .entity-del { display: none; }
+
+.entity-moves {
+  position: absolute;
+  right: 8px;
+  bottom: 7px;
+  display: none;
+  gap: 2px;
+}
+.entity-cards.sorting .entity-moves { display: flex; }
+.entity-move {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  cursor: pointer;
+}
+.entity-move:hover { background: var(--accent); color: var(--accent-foreground); }
+.entity-card { user-select: none; }

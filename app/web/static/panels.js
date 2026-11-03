@@ -175,16 +175,28 @@ function cardOrder(container) {
   return Array.from(container.querySelectorAll(".entity-card")).map((card) => card.dataset.name);
 }
 function entityCard({ title, meta, active, badge, onActivate, onDelete }) {
-  const card = el("button", "entity-card");
-  card.type = "button";
+  // 用 div 而不是 button：button 在 Chrome 里拖拽行为不稳定，
+  // 而且 draggable 属性默认是关的，dragstart 根本不会触发。
+  const card = el("div", "entity-card");
+  card.setAttribute("role", "button");
+  card.tabIndex = 0;
+  card.draggable = true;
   card.dataset.name = title;
   if (active) card.classList.add("active");
   card.append(el("span", "entity-name", title));
   card.append(el("span", "entity-meta", meta));
   if (active && badge) card.append(el("span", "entity-badge", badge));
-  card.addEventListener("click", () => {
+
+  const activate = () => {
     if (card.closest(".entity-cards")?.classList.contains("sorting")) return;
     onActivate();
+  };
+  card.addEventListener("click", activate);
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      activate();
+    }
   });
 
   if (onDelete && !active) {
@@ -197,6 +209,27 @@ function entityCard({ title, meta, active, badge, onActivate, onDelete }) {
     });
     card.append(del);
   }
+
+  // 排序模式下的兜底：拖拽在某些浏览器/触控板上不灵，箭头总能点。
+  const moves = el("span", "entity-moves");
+  const left = el("span", "entity-move", "‹");
+  left.setAttribute("role", "button");
+  left.title = "往前挪";
+  left.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const previous = card.previousElementSibling;
+    if (previous) card.parentElement.insertBefore(card, previous);
+  });
+  const right = el("span", "entity-move", "›");
+  right.setAttribute("role", "button");
+  right.title = "往后挪";
+  right.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const next = card.nextElementSibling;
+    if (next) card.parentElement.insertBefore(next, card);
+  });
+  moves.append(left, right);
+  card.append(moves);
   return card;
 }
 
