@@ -132,6 +132,18 @@ function paintPlugins(items) {
     return;
   }
   for (const plugin of items) grid.append(pluginCard(plugin));
+  openDeepLinkPlugin(items);
+}
+
+// /?plugin=<id> 直接打开某个插件的设置：面板里的插件卡片可以这么链过来
+let DEEP_LINK_DONE = false;
+function openDeepLinkPlugin(items) {
+  if (DEEP_LINK_DONE) return;
+  const wanted = new URLSearchParams(location.search).get("plugin");
+  if (!wanted) return;
+  DEEP_LINK_DONE = true;
+  const plugin = items.find((item) => item.name === wanted);
+  if (plugin && plugin.config?.length) openPluginDialog(plugin);
 }
 
 function emptyPlugins(soft = false) {
@@ -198,12 +210,45 @@ function openPluginDialog(plugin) {
   panel.append(head);
   if (plugin.description) panel.append(el("p", "dialog-sub", plugin.description));
 
-  const body = el("div", "dialog-body grid");
+  const body = el("div", "dialog-body");
   const controls = {};
+  // 按 group 分块：字段多了以后平铺一屏根本找不到
+  const groups = [];
   for (const field of plugin.config) {
-    controls[field.key] = buildDialogField(field, plugin.settings?.[field.key], body);
+    const key = field.group || "";
+    let group = groups.find((item) => item.key === key);
+    if (!group) {
+      group = { key, label: field.group_label || "", fields: [] };
+      groups.push(group);
+    }
+    group.fields.push(field);
+  }
+  for (const group of groups) {
+    const section = el("div", "dialog-group");
+    if (group.label) section.append(el("h4", "dialog-group-title", group.label));
+    const grid = el("div", "dialog-grid");
+    for (const field of group.fields) {
+      controls[field.key] = buildDialogField(field, plugin.settings?.[field.key], grid);
+    }
+    section.append(grid);
+    body.append(section);
   }
   panel.append(body);
+
+  // show_if：依赖项没打开时把子选项藏起来（比如 wiki_enable 关掉就别管同步时间）
+  const applyConditions = () => {
+    for (const field of plugin.config) {
+      const condition = field.show_if;
+      if (!condition || !condition.key) continue;
+      const node = body.querySelector(`[data-field="${field.key}"]`);
+      const read = controls[condition.key];
+      if (!node || !read) continue;
+      node.hidden = String(read()) !== String(condition.value);
+    }
+  };
+  body.addEventListener("input", applyConditions);
+  body.addEventListener("change", applyConditions);
+  applyConditions();
 
   const foot = el("div", "dialog-foot");
   const cancel = el("button", "btn", "取消");
@@ -244,6 +289,7 @@ function openPluginDialog(plugin) {
 
 function buildDialogField(field, value, host) {
   const wrap = el("div", "field");
+  wrap.dataset.field = field.key;
   const head = el("div", "field-head");
   const label = document.createElement("label");
   label.textContent = field.label || field.key;

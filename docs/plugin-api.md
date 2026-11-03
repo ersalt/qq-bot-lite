@@ -43,7 +43,15 @@ label = "自动学习"
 type = "bool"                       # bool / number / text
 default = true
 help = "说明文字"
+group = "learning"                  # 可选，设置弹窗按这个分组
+group_label = "自动学习"             # 可选，分组的标题
+show_if = { key = "wiki_enable", value = true }   # 可选，依赖另一个开关
+min = 0                             # number 类型的上下限，超了会被拒绝
+max = 100
 ```
+
+`group` 相同的字段会落在一块，没写 `group` 的单独成块（无标题）。
+`show_if` 依赖的键变化时，字段会跟着显示/隐藏，值仍然照常保存。
 
 **元数据与代码分开**是硬要求：列插件时绝不能执行插件代码，
 写坏的插件只能显示成一张带错误的卡，不能把列表拖垮。
@@ -159,6 +167,7 @@ async def on_start(self):
 - 想跟主面板长得一模一样，直接引 `/static/style.css`：色彩令牌、按钮、输入框、
   弹窗、toast 都在里面，主题跟着 `data-theme` 走。它属于主程序的静态资源，
   跨大版本可能调整；插件要绝对独立就自己写样式。
+- 面板里想跳去自己的设置：链 `/?plugin=<id>#plugins`，会直接打开那个插件的设置弹窗。
 
 ---
 

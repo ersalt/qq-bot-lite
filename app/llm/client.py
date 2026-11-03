@@ -119,10 +119,23 @@ class LLMClient:
             payload.setdefault("stream_options", {"include_usage": True})
         return payload
 
-    async def complete(self, messages: list[dict[str, Any]], override: dict[str, Any] | None = None) -> str:
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        override: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> str:
+        """一次非流式请求。
+
+        timeout 只影响这一次请求：后台整理语料这类活允许等更久，
+        聊天回复还是按配置的 120 秒来。
+        """
         payload = self._payload(messages, stream=False, override=override)
+        kwargs: dict[str, Any] = {}
+        if timeout:
+            kwargs["timeout"] = httpx.Timeout(connect=10.0, read=timeout, write=30.0, pool=10.0)
         try:
-            resp = await self._client.post("/chat/completions", json=payload)
+            resp = await self._client.post("/chat/completions", json=payload, **kwargs)
         except httpx.HTTPError as exc:
             raise LLMError(f"请求模型失败: {exc}") from exc
         if resp.status_code >= 400:
