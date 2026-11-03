@@ -138,7 +138,12 @@ async def on_start(self):
 |---|---|---|
 | `on_message(hook)` | 每条消息判定完触发、回复之前 | 不能，只观察 |
 | `system_prompt(hook)` | 拼 system 提示词时 | 返回一段文本，追加到 system 末尾 |
+| `user_suffix(hook)` | 拼当前这条用户消息时 | 返回一段文本，追加到这条消息末尾 |
 | `after_reply(hook, text)` | 文本要发出去之前 | 返回改写后的文本 |
+
+**注入优先用 `user_suffix` 而不是 `system_prompt`**：system 是静态的，模型能一直命中
+KV 缓存；塞进 system 会让缓存从注入点断开，每条消息都要重新算一遍前面那些历史。
+只有「永远都在、且不随消息变化」的内容才适合放 system。
 
 `HookContext`：
 

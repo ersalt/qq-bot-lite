@@ -306,8 +306,12 @@ class ChatService:
         history = self._attach_history_images(history)
         ctx.history = history
 
+        text = _prompt_text(event, quoted=decision.reason == "quote", cfg=self.cfg)
+        suffix = await self.extensions.collect_user_suffix(ctx)
+        if suffix:
+            text = f"{text}\n\n{suffix}" if text else suffix
         content = await self.images.build_content(
-            _prompt_text(event, quoted=decision.reason == "quote", cfg=self.cfg),
+            text,
             prepared if prepared is not None else [],
         )
         extra = await self.extensions.collect_system_prompt(ctx)

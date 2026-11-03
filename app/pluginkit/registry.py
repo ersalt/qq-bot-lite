@@ -42,6 +42,10 @@ class Extension:
     async def system_prompt(self, ctx: HookContext) -> str | None:
         return None
 
+    async def user_suffix(self, ctx: HookContext) -> str | None:
+        """追加到当前这条用户消息末尾（比塞 system 省 KV 缓存）。"""
+        return None
+
     async def after_reply(self, ctx: HookContext, text: str) -> str:
         return text
 
@@ -263,6 +267,19 @@ class ExtensionRegistry:
             if text and text.strip():
                 sections.append(text.strip())
         return sections
+
+    async def collect_user_suffix(self, ctx: HookContext) -> str:
+        parts: list[str] = []
+        for extension in self.extensions:
+            try:
+                text = await extension.user_suffix(ctx)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("插件 %s user_suffix 异常", extension.name)
+                self._mark_error(extension.name, exc)
+                continue
+            if text and text.strip():
+                parts.append(text.strip())
+        return "\n\n".join(parts)
 
     async def after_reply(self, ctx: HookContext, text: str) -> str:
         for extension in self.extensions:

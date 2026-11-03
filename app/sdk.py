@@ -8,6 +8,7 @@
     class MyPlugin(Extension):
         name = "my_plugin"
         async def on_message(self, hook: HookContext) -> None: ...
+        async def user_suffix(self, hook: HookContext) -> str | None: ...
 
     async def handle(cmd: CommandContext) -> str:
         return "收到：" + " ".join(cmd.args)
