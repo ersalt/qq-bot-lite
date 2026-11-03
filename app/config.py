@@ -1,14 +1,19 @@
-"""配置加载：config/config.toml 是唯一配置源。"""
+"""配置加载：config/config.toml 是唯一配置源（首次启动从 config.example.toml 复制）。"""
 
 from __future__ import annotations
 
+import logging
+import shutil
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+log = logging.getLogger(__name__)
+
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "config.toml"
+EXAMPLE_PATH = ROOT / "config" / "config.example.toml"
 DEFAULT_PERSONA = ROOT / "personas" / "default.md"
 
 
@@ -191,6 +196,14 @@ def _merged(defaults: Any, data: dict[str, Any]) -> Any:
 def load_config(path: Path | None = None) -> Config:
     config_path = path or CONFIG_PATH
     raw: dict[str, Any] = {}
+    # 首次运行：没有 config.toml 就从示例复制一份，用户照着注释改
+    if path is None and not config_path.exists() and EXAMPLE_PATH.exists():
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(EXAMPLE_PATH, config_path)
+            log.info("没有 config.toml，已从 %s 复制一份", EXAMPLE_PATH.name)
+        except OSError:
+            log.warning("复制示例配置失败，先用内置默认值启动", exc_info=True)
     if config_path.exists():
         with config_path.open("rb") as fh:
             raw = tomllib.load(fh)

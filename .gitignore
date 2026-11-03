@@ -13,3 +13,7 @@ data/plugin_data/
 
 # 历史图片的本地副本（QQ 图链会过期，所以留一份）
 data/images/
+
+# 本机配置（从 *.example.toml 复制，个人路径和习惯不跟着仓库走）
+config/config.toml
+config/models.toml

@@ -183,7 +183,7 @@ async def settings_fields(self, ctx, fields):
 | 字段 | 说明 |
 |---|---|
 | `event` | 消息事件：`sender_name`、`user_id`、`group_id`、`content.text`、`content.images` |
-| `session_key` | 会话键，形如 `group:1058912272`，跨钩子稳定 |
+| `session_key` | 会话键，形如 `group:123456789`，跨钩子稳定 |
 | `is_group` | 群聊还是私聊 |
 | `history` | 已拼好的历史（只读） |
 
