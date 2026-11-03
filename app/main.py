@@ -118,7 +118,11 @@ def build_app(
     images = ImageLoader(cfg.images)
     members = MemberDirectory()
     sender = ReplySender(cfg, members)
-    extensions = ExtensionRegistry(cfg.extensions.enabled, data_dir=plugin_data_dir)
+    extensions = ExtensionRegistry(
+        cfg.extensions.enabled,
+        data_dir=plugin_data_dir,
+        extra_dirs=[Path(item) for item in cfg.extensions.dirs if str(item).strip()],
+    )
 
     server_holder: dict[str, OneBotServer] = {}
 
@@ -143,7 +147,7 @@ def build_app(
         get_self_id=get_self_id,
     )
     # 插件拿到的是这几个运行时对象，别的都不给。
-    extensions.services = {"store": store, "service": service, "cfg": cfg}
+    extensions.services = {"store": store, "service": service, "cfg": cfg, "llm": llm}
     server = OneBotServer(cfg.onebot, service.handle)
     server_holder["server"] = server
 
@@ -266,6 +270,8 @@ def build_app(
 def create_app(config_path: Path | None = None) -> FastAPI:
     cfg = load_config(config_path)
     return build_app(cfg, config_path=config_path)
+
+
 
 
 

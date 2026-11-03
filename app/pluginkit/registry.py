@@ -53,20 +53,34 @@ class ExtensionRegistry:
         plugin_dir: Path | None = None,
         data_dir: Path | None = None,
         services: dict[str, Any] | None = None,
+        extra_dirs: list[Path] | None = None,
     ):
         self.enabled = list(names)
         self.plugin_dir = plugin_dir or PLUGIN_DIR
+        self.extra_dirs = [Path(item) for item in (extra_dirs or [])]
         self.data_dir = data_dir or DATA_DIR
         self.services = services or {}
         self.extensions: list[Extension] = []
         self.manifests: dict[str, PluginManifest] = {}
         self.routers: dict[str, Any] = {}
+        self._roots: dict[str, Path] = {}
 
     # ---------- 清单 ----------
 
     def scan(self) -> list[PluginManifest]:
-        self.manifests = {name: read_manifest(self.plugin_dir, name) for name in discover(self.plugin_dir)}
+        """扫所有插件目录。插件项目可以放在仓库外面，用 [extensions] dirs 配。"""
+        found: dict[str, Path] = {}
+        for root in [self.plugin_dir, *self.extra_dirs]:
+            for name in discover(root):
+                found.setdefault(name, root)  # 内建目录优先
+        self._roots = found
+        self.manifests = {name: read_manifest(root, name) for name, root in found.items()}
         return list(self.manifests.values())
+
+    def root_of(self, name: str) -> Path:
+        if not self.manifests:
+            self.scan()
+        return self._roots.get(name, self.plugin_dir)
 
     def settings_path(self, name: str) -> Path:
         return self.data_dir / name / "settings.toml"
@@ -102,11 +116,12 @@ class ExtensionRegistry:
             await self._load_one(name)
 
     async def _load_one(self, name: str) -> None:
-        manifest = self.manifests.get(name) or read_manifest(self.plugin_dir, name)
+        root = self.root_of(name)
+        manifest = self.manifests.get(name) or read_manifest(root, name)
         if manifest.error:
             log.error("插件 %s 无法加载: %s", name, manifest.error)
             return
-        path = entry_path(self.plugin_dir, name)
+        path = entry_path(self.root_of(name), name)
         try:
             spec = importlib.util.spec_from_file_location(f"qqbotlite_plugin_{name}", path)
             if spec is None or spec.loader is None:
@@ -157,7 +172,7 @@ class ExtensionRegistry:
         await self.load()
 
     def update_settings(self, name: str, values: dict[str, Any]) -> dict[str, Any]:
-        manifest = self.manifests.get(name) or read_manifest(self.plugin_dir, name)
+        manifest = self.manifests.get(name) or read_manifest(self.root_of(name), name)
         defaults = defaults_from(manifest.config)
         merged = {**defaults, **self.settings_of(name, defaults), **values}
         save_settings(self.settings_path(name), merged)
@@ -194,3 +209,5 @@ class ExtensionRegistry:
             except Exception:  # noqa: BLE001
                 log.exception("插件 %s after_reply 异常", extension.name)
         return text
+
+

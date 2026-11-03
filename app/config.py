@@ -129,6 +129,8 @@ class ImagesConfig:
 @dataclass(slots=True)
 class ExtensionsConfig:
     enabled: list[str] = field(default_factory=list)
+    # 额外插件目录（绝对路径）。插件项目可以放在仓库外面，这里登记一下就能加载。
+    dirs: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -194,4 +196,5 @@ def load_config(path: Path | None = None) -> Config:
         extensions=_merged(ExtensionsConfig(), _section(raw, "extensions")),
     )
     return cfg
+
 

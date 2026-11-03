@@ -45,7 +45,7 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="请求体不是 JSON") from exc
         enabled = bool(body.get("enabled"))
-        manifest = registry.manifests.get(name) or read_manifest(registry.directory, name)
+        manifest = registry.manifests.get(name) or read_manifest(registry.root_of(name), name)
         if manifest.error:
             return JSONResponse({"ok": False, "message": manifest.error}, status_code=400)
 
@@ -72,7 +72,7 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
         if not isinstance(values, dict):
             return JSONResponse({"ok": False, "message": "缺少 values"}, status_code=400)
 
-        manifest = registry.manifests.get(name) or read_manifest(registry.directory, name)
+        manifest = registry.manifests.get(name) or read_manifest(registry.root_of(name), name)
         if manifest.error:
             return JSONResponse({"ok": False, "message": manifest.error}, status_code=400)
 
@@ -104,6 +104,7 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
 
         merged = registry.update_settings(name, {**defaults, **clean})
         return JSONResponse({"ok": True, "settings": merged, "message": "设置已保存"})
+
 
 
 
