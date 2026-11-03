@@ -65,7 +65,10 @@ def mount_persona_api(
                     "active": path.stem == active_name(),
                 }
             )
-        result.sort(key=lambda item: (not item["active"], item["name"]))
+        order = list(getattr(cfg.persona, "order", []) or [])
+        rank = {name: index for index, name in enumerate(order)}
+        # 顺序只看 order 表；选中/新建都不该让卡片跳位置。
+        result.sort(key=lambda item: (rank.get(item["name"], len(rank) + 1), item["name"]))
         return result
 
     @app.get("/api/personas")
@@ -88,6 +91,10 @@ def mount_persona_api(
             return JSONResponse({"ok": False, "message": f"「{name}」已经存在"}, status_code=400)
         root.mkdir(parents=True, exist_ok=True)
         path.write_text(TEMPLATE.replace("人设名", name), encoding="utf-8")
+        order = [item for item in (getattr(cfg.persona, "order", []) or []) if item != name]
+        order.append(name)
+        cfg.persona.order = order
+        save_to_toml(config_path, {"persona.order": order})
         log.info("新建人设: %s", path)
         return JSONResponse({"ok": True, "items": items(), "name": name})
 
@@ -138,3 +145,19 @@ def mount_persona_api(
         return JSONResponse({"ok": True, "items": items()})
 
 
+
+
+
+    @app.post("/api/personas/order")
+    async def set_order(request: Request) -> JSONResponse:
+        try:
+            body: dict[str, Any] = await request.json()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="请求体不是 JSON") from exc
+        names = body.get("names")
+        if not isinstance(names, list) or not names:
+            return JSONResponse({"ok": False, "message": "缺少 names"}, status_code=400)
+        order = [str(item) for item in names if str(item).strip()]
+        cfg.persona.order = order
+        save_to_toml(config_path, {"persona.order": order})
+        return JSONResponse({"ok": True, "items": items(), "order": order})

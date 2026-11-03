@@ -193,6 +193,16 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
             save_all(profiles)
             return JSONResponse({"ok": True, "items": items()})
 
+        if action == "reorder":
+            names_in_order = body.get("names")
+            if not isinstance(names_in_order, list) or not names_in_order:
+                return JSONResponse({"ok": False, "message": "缺少 names"}, status_code=400)
+            by_name = {item["name"]: item for item in profiles}
+            reordered = [by_name[name] for name in names_in_order if name in by_name]
+            reordered += [item for item in profiles if item["name"] not in set(names_in_order)]
+            save_all(reordered)
+            return JSONResponse({"ok": True, "items": items()})
+
         if action == "save":
             # 把当前 [llm] 的值存回它自己那张卡
             current = getattr(cfg.llm, "profile", "")
@@ -208,4 +218,5 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
             return JSONResponse({"ok": True, "items": items()})
 
         return JSONResponse({"ok": False, "message": f"不认识的动作 {action}"}, status_code=400)
+
 

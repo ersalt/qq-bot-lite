@@ -83,6 +83,8 @@ class ContextConfig:
 class PersonaConfig:
     file: str = "personas/default.md"
     nickname: str = "小女仆"
+    # 卡片顺序（面板里拖动排序后写回）。不在表里的按名字排在后面。
+    order: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)

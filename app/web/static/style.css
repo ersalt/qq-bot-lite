@@ -880,3 +880,20 @@ select {
 .entity-add input { flex: 1; min-width: 0; }
 .entity-add button { flex: none; }
 .entity-body { display: grid; gap: 16px; }
+
+.entity-sortbar { display: contents; }
+.entity-cards.sorting .entity-card {
+  cursor: grab;
+  border-style: dashed;
+  border-color: color-mix(in oklab, var(--ring) 45%, var(--border));
+}
+.entity-cards.sorting .entity-card:hover { border-color: var(--ring); }
+.entity-cards.sorting .entity-card.active {
+  border-style: dashed;
+}
+.entity-card.dragging {
+  opacity: .45;
+  cursor: grabbing;
+  transform: scale(.98);
+}
+.entity-cards.sorting .entity-del { display: none; }

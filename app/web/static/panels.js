@@ -27,8 +27,9 @@ function modelPanel(section) {
   const add = el("button", "btn btn-sm", "新建");
   add.type = "button";
   add.addEventListener("click", createModel);
-  addRow.append(input, add);
+  addRow.append(input, add, sortBar(() => saveModelOrder()));
   wrap.append(addRow);
+  makeSortable(list);
 
   const main = el("div", "entity-body");
   const basic = el("div", "grid");
@@ -116,14 +117,75 @@ async function loadModels() {
   }
 }
 
+
+/* ---------- 排序 ---------- */
+
+function sortBar(onDone) {
+  const bar = el("div", "entity-sortbar");
+  const button = el("button", "btn btn-sm", "排序");
+  button.type = "button";
+  button.dataset.role = "sort";
+  let sorting = false;
+  button.addEventListener("click", () => {
+    sorting = !sorting;
+    const scope = button.closest(".entity-panel");
+    const cards = scope?.querySelector(".entity-cards");
+    if (!cards) return;
+    cards.classList.toggle("sorting", sorting);
+    button.textContent = sorting ? "完成" : "排序";
+    button.classList.toggle("btn-primary", sorting);
+    if (!sorting) onDone();
+  });
+  bar.append(button);
+  return bar;
+}
+
+function makeSortable(container) {
+  let dragging = null;
+  container.addEventListener("dragstart", (event) => {
+    if (!container.classList.contains("sorting")) {
+      event.preventDefault();
+      return;
+    }
+    const card = event.target.closest(".entity-card");
+    if (!card) return;
+    dragging = card;
+    card.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", card.dataset.name || "");
+  });
+  container.addEventListener("dragover", (event) => {
+    if (!dragging) return;
+    event.preventDefault();
+    const target = event.target.closest(".entity-card");
+    if (!target || target === dragging) return;
+    const rect = target.getBoundingClientRect();
+    const after = event.clientX - rect.left > rect.width / 2;
+    container.insertBefore(dragging, after ? target.nextSibling : target);
+  });
+  container.addEventListener("drop", (event) => event.preventDefault());
+  container.addEventListener("dragend", () => {
+    if (!dragging) return;
+    dragging.classList.remove("dragging");
+    dragging = null;
+  });
+}
+
+function cardOrder(container) {
+  return Array.from(container.querySelectorAll(".entity-card")).map((card) => card.dataset.name);
+}
 function entityCard({ title, meta, active, badge, onActivate, onDelete }) {
   const card = el("button", "entity-card");
   card.type = "button";
+  card.dataset.name = title;
   if (active) card.classList.add("active");
   card.append(el("span", "entity-name", title));
   card.append(el("span", "entity-meta", meta));
   if (active && badge) card.append(el("span", "entity-badge", badge));
-  card.addEventListener("click", onActivate);
+  card.addEventListener("click", () => {
+    if (card.closest(".entity-cards")?.classList.contains("sorting")) return;
+    onActivate();
+  });
 
   if (onDelete && !active) {
     const del = el("span", "entity-del", "×");
@@ -263,8 +325,9 @@ function personaPanel() {
   const add = el("button", "btn btn-sm", "新建");
   add.type = "button";
   add.addEventListener("click", createPersona);
-  addRow.append(input, add);
+  addRow.append(input, add, sortBar(() => savePersonaOrder()));
   wrap.append(addRow);
+  makeSortable(cards);
 
   const editor = el("div", "editor");
   const head = el("div", "editor-head");
@@ -421,5 +484,51 @@ async function savePersona(text, updateCounter) {
     toast(`人设已保存（${data.chars} 字）`);
   } catch (error) {
     toast(`保存失败：${error.message}`, "bad");
+  }
+}
+
+
+
+async function saveModelOrder() {
+  const list = $("model-list");
+  if (!list) return;
+  const names = cardOrder(list);
+  try {
+    const response = await fetch("/api/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reorder", names }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      toast(data.message || "排序保存失败", "bad");
+      return;
+    }
+    MODELS.items = data.items || MODELS.items;
+    toast("顺序已保存");
+  } catch (error) {
+    toast(`排序保存失败：${error.message}`, "bad");
+  }
+}
+
+async function savePersonaOrder() {
+  const host = $("persona-cards");
+  if (!host) return;
+  const names = cardOrder(host);
+  try {
+    const response = await fetch("/api/personas/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      toast(data.message || "排序保存失败", "bad");
+      return;
+    }
+    PERSONAS.items = data.items || PERSONAS.items;
+    toast("顺序已保存");
+  } catch (error) {
+    toast(`排序保存失败：${error.message}`, "bad");
   }
 }
