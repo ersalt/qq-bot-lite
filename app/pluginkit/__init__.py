@@ -8,7 +8,7 @@
         pages/          可选，网页面板
         core/           可选，纯逻辑
 
-骨架看 `plugins/_template/`，规范看 `docs/plugin-spec.md`，
+骨架看 `plugins/_template/`，规范看 `docs/plugin.md`，
 自检用 `python -m app.pluginkit.check`。
 运行期数据写到 `data/plugin_data/<id>/`，插件拿到的 `ctx.data_dir` 就是这个目录。
 """

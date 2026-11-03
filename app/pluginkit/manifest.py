@@ -16,7 +16,7 @@ from typing import Any
 
 from . import ENTRY_FILE, META_FILE
 
-# 插件接口版本：改契约就要升它，见 docs/plugin-api.md
+# 插件接口版本：改契约就要升它，见 docs/plugin.md
 SUPPORTED_API = 1
 # 插件 id 会出现在 URL、配置键、日志里，限定成安全字符
 _ID_RE = re.compile(r"^[A-Za-z0-9_]+$")

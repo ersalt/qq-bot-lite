@@ -9,7 +9,7 @@
 - COMMANDS：可选，/命令
 - ctx.log：日志自动带 `[插件模板]` 前缀，别自己拼
 
-规范见 docs/plugin-spec.md。
+规范见 docs/plugin.md。
 """
 
 from __future__ import annotations

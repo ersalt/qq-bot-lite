@@ -1,7 +1,7 @@
 """插件 SDK：插件该 import 的唯一入口。
 
 **插件只准 import 这个模块**，不要直接引 `app.pluginkit.*` 或 `app.core.*`。
-里面用到的名字属于 v1 契约（见 docs/plugin-api.md），内部怎么重构都不影响插件。
+里面用到的名字属于 v1 契约（见 docs/plugin.md），内部怎么重构都不影响插件。
 
     from app.sdk import Extension, HookContext, Command, CommandContext
 

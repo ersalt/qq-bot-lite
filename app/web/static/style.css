@@ -306,17 +306,8 @@ body {
 .toast.ok { border-color: color-mix(in oklab, var(--success) 45%, var(--border)); }
 .toast.bad { border-color: color-mix(in oklab, var(--destructive) 45%, var(--border)); color: var(--destructive); }
 
-.skeleton {
-  height: 12px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, var(--muted) 25%, color-mix(in oklab, var(--muted) 60%, var(--border)) 37%, var(--muted) 63%);
-  background-size: 400% 100%;
-  animation: shimmer 1.3s ease infinite;
-}
-@keyframes shimmer {
-  0% { background-position: 100% 50%; }
-  100% { background-position: 0 50%; }
-}
+/* 骨架屏外观（底色 + 脉冲）由 Basecoat 的 .skeleton 负责，这里只管尺寸和容器 */
+.skeleton-row .skeleton { height: 12px; }
 .skeleton-row { display: grid; gap: 10px; padding: 16px 24px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -432,9 +423,6 @@ body {
   background: transparent;
 }
 .plugin-empty h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
-.plugin-empty.soft { opacity: .55; }
-.plugin-empty.soft h3 { display: none; }
-.plugin-empty.soft .plugin-desc, .plugin-empty.soft .btn { display: none; }
 
 /* ---------- 开关按钮（插件卡片用） ---------- */
 

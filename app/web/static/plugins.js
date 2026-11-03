@@ -146,8 +146,8 @@ function openDeepLinkPlugin(items) {
   if (plugin && plugin.config?.length) openPluginDialog(plugin);
 }
 
-function emptyPlugins(soft = false) {
-  const box = el("div", soft ? "plugin-card plugin-empty soft" : "plugin-card plugin-empty");
+function emptyPlugins() {
+  const box = el("div", "plugin-card plugin-empty");
   box.append(el("h3", null, "还没有插件"));
   box.append(
     el(

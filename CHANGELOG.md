@@ -7,6 +7,10 @@
 
 ### 变更
 
+- 界面全面换用 [Basecoat](https://basecoatui.com) 组件库（MIT，本地内置、零外部请求）：按钮、输入框、下拉、开关、徽章、提示条、弹窗都用它的类名和 `data-variant` 语义；`style.css` 只保留布局与产品专属样式。插件面板同样迁移，弹窗改用原生 `<dialog>`。
+- 文档瘦身：`docs/` 只留三份——`local-first.md`（项目定位与实测）、`plugin.md`（插件开发，合并原 plugin-spec / plugin-api / plugins 三份）、`log-spec.md`（控制台日志格式）。删掉 `astrbot.md`（源码研究笔记，结论已沉淀到 local-first 与代码里）。
+- 插件页面的主题按钮移到页面右上角，与主面板的头部对齐；两边共用 `qqbotlite-theme` 和 `.dark` 类。
+- 骨架屏改用 Basecoat 的 `.skeleton`（脉冲），不再自带 shimmer 动画。
 - 请求体瘦身，对齐 AstrBot：`[llm] max_tokens` 默认 0、`reasoning_effort` 默认空、`temperature`/`top_p` 默认留空、惩罚项为 0 时不发。抓包确认 AstrBot 只发 `model/stream/messages/tool_choice/tools`，回复长度靠人设里的“50 字以内”约束，实测比塞配额更稳。现在实发只有 `model` / `messages` / `stream`。
 - `[llm] stream` 默认改为 false（整段生成完再发）。一条回复总共 3 秒左右，提前吐半句收益很小；代价是 `thinking_budget` 失效——非流式拿不到思考增量，数不了也掐不断，所以它默认也改成 0。
 - 群里回复默认不再 @ 被回复人（`at_sender` 默认由 true 改为 false）。v0.1.0 每条回复都带 @，刷屏。

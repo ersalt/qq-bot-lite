@@ -11,7 +11,7 @@
 - 图片识别（下载 → 缩放 → base64 送模型）
 - 单次模型请求，不走 Agent tool loop
 - 一份说人话的 `config/config.toml`
-- 插件式扩展点（钩子、命令、面板、设置），规范见 [docs/plugin-spec.md](docs/plugin-spec.md)
+- 插件式扩展点（钩子、命令、面板、设置），规范见 [docs/plugin.md](docs/plugin.md)
 
 > **定位**：AstrBot 为云端模型设计，本地部署是它的兼容项；本项目反着来——KV 缓存、
 > 显存余量、并发槽位这些"云上看不见"的东西才是一等公民。取舍与实测账本见
@@ -173,7 +173,7 @@ enabled = ["slang"]
 | 日志 | `CHANGELOG.md` 以上一个正式 tag 为基线，只写用户可感知的变化（Keep a Changelog 格式） |
 | 代码风格 | `python -m ruff check .`（E/W/F/B/I，行长 120，见 `ruff.toml`） |
 | 测试 | `python -m pytest tests -q` |
-| 插件 | `python -m app.pluginkit.check plugins`；规范见 [docs/plugin-spec.md](docs/plugin-spec.md) |
+| 插件 | `python -m app.pluginkit.check plugins`；规范见 [docs/plugin.md](docs/plugin.md) |
 | CI | `.github/workflows/ci.yml`：3.12/3.13 × Ubuntu/Windows 跑 ruff + pytest，另加插件自检 |
 | 发布 | develop 合并到 main（`--no-ff`）→ 打附注 tag `vX.Y.Z` → GitHub Release |
 
@@ -209,7 +209,7 @@ plugins/            插件（目录名即插件 id；_template 是骨架，不�
 data/app.db         会话数据库
 data/plugin_data/   插件运行期数据
 logs/app.log        运行日志
-docs/               设计文档、插件规范、实测账本
+docs/               项目说明、插件开发、日志格式
 tests/              端到端自测
 VERSION             版本号唯一来源
 CHANGELOG.md        更新日志

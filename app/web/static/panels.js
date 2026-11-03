@@ -133,7 +133,8 @@ function sortBar(onDone) {
     if (!cards) return;
     cards.classList.toggle("sorting", sorting);
     button.textContent = sorting ? "完成" : "排序";
-    button.dataset.variant = sorting ? "default" : "outline";
+    if (sorting) delete button.dataset.variant;
+  else button.dataset.variant = "outline";
     if (!sorting) onDone();
   });
   bar.append(button);

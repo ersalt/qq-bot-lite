@@ -3,7 +3,7 @@
     python -m app.pluginkit.check plugins/whale_lexicon
     python -m app.pluginkit.check            # 检查 plugins/ 下所有插件
 
-只读文件、不导入插件代码，所以坏插件也能被检查。规则见 docs/plugin-spec.md。
+只读文件、不导入插件代码，所以坏插件也能被检查。规则见 docs/plugin.md。
 """
 
 from __future__ import annotations

@@ -3,7 +3,7 @@
 控制台只打 message，所以前缀就是「这条日志是谁说的」；文件日志里 logger 名是
 `plugin.<id>`，比 `qqbotlite_plugin_xxx.core.miner` 好认。
 
-规范见 docs/plugin-spec.md「日志」一节：面向用户的事件走 `ctx.log`，
+规范见 docs/plugin.md「日志」一节：面向用户的事件走 `ctx.log`，
 排错细节可以用模块自己的 logger。
 """
 
