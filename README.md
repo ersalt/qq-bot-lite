@@ -32,7 +32,7 @@ qq-bot-lite 自己就是 OneBot 11 **反向 WS 服务端**，SnowLuma 作为客�
 `.venv` 并装依赖（Python 3.12+，本机是 3.13.5）。
 
 配置在 `config/config.toml`。**这份文件不入库**：第一次启动会从 `config/config.example.toml`
-复制一份，照着注释改就行——模型地址、外部插件目录这些是本机的东西，不该跟着仓库走。
+复制一份，照着注释改就行——模型地址、token 这些是本机的东西，不该跟着仓库走。
 `config/models.toml` 同理（示例是 `config/models.example.toml`）。
 
 启动后：
