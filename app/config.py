@@ -127,6 +127,16 @@ class ImagesConfig:
 
 
 @dataclass(slots=True)
+class CommandsConfig:
+    """/xxx 命令层：插件导出 COMMANDS 就会被这里分发。"""
+
+    prefix: str = "/"
+    # 能用管理员命令的 QQ 号。留空 = 不限制（本地自用方便，群里慎用）。
+    admins: list[str] = field(default_factory=list)
+    timeout: float = 20.0
+
+
+@dataclass(slots=True)
 class ExtensionsConfig:
     enabled: list[str] = field(default_factory=list)
     # 额外插件目录（绝对路径）。插件项目可以放在仓库外面，这里登记一下就能加载。
@@ -144,6 +154,7 @@ class Config:
     reply: ReplyConfig = field(default_factory=ReplyConfig)
     images: ImagesConfig = field(default_factory=ImagesConfig)
     extensions: ExtensionsConfig = field(default_factory=ExtensionsConfig)
+    commands: CommandsConfig = field(default_factory=CommandsConfig)
 
     @property
     def persona_path(self) -> Path:
@@ -194,7 +205,9 @@ def load_config(path: Path | None = None) -> Config:
         reply=_merged(ReplyConfig(), _section(raw, "reply")),
         images=_merged(ImagesConfig(), _section(raw, "images")),
         extensions=_merged(ExtensionsConfig(), _section(raw, "extensions")),
+        commands=_merged(CommandsConfig(), _section(raw, "commands")),
     )
     return cfg
+
 
 

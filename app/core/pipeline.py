@@ -24,6 +24,7 @@ from ..onebot.protocol import ImageRef
 from ..persona import Persona
 from ..reply.segments import Segmenter
 from ..reply.sender import ReplySender, clean_text
+from ..sdk import CommandContext
 from .trigger import Decision, decide
 
 log = logging.getLogger(__name__)
@@ -99,6 +100,14 @@ class ChatService:
             log.debug("重复事件，跳过 message_id=%s", event.message_id)
             return
 
+        conn = self.get_connection()
+        # 命令优先：命中插件命令就直接回，不进模型、不进历史。
+        if conn is not None and await self._run_command(conn, event, session):
+            return
+        if conn is None and self._looks_like_command(event):
+            log.warning("当前没有 OneBot 连接，命令丢弃 session=%s", session)
+            return
+
         decision = decide(
             self.cfg,
             event,
@@ -107,7 +116,6 @@ class ChatService:
         )
 
         group_label = await self._group_label(event)
-        conn = self.get_connection()
         # 引用了一张图、但当前消息本身只有文字：把那张图取过来。
         # 群里常用的姿势是“先发图，再引用那张图说一句”，不取的话模型只会回“图呢？”。
         # 只有真要回复时才去取，否则每次引用都要多打一次 get_msg。
@@ -199,6 +207,76 @@ class ChatService:
 
         async with self._lock_for(session):
             await self._reply(conn, event, history, ctx, decision, prepared)
+
+    # ---------- 命令 ----------
+
+    def _command_prefix(self) -> str:
+        return (self.cfg.commands.prefix or "/").strip()
+
+    def _looks_like_command(self, event: MessageEvent) -> bool:
+        prefix = self._command_prefix()
+        return bool(prefix) and (event.content.text or "").strip().startswith(prefix)
+
+    async def _send_plain(self, conn: OneBotConnection, event: MessageEvent, text: str) -> None:
+        """命令的回复走普通发送链路：引用、分段、去重都照旧。"""
+        body = (text or "").strip()
+
+        async def pieces():
+            if body:
+                yield body
+
+        try:
+            await self.sender.deliver(
+                conn,
+                event,
+                pieces(),
+                on_sent=lambda mid: self.store.mark_sent(event.session_key, [mid]),
+            )
+        except Exception:  # noqa: BLE001 - 命令回复失败不能连带主流程
+            log.exception("命令回复发送失败")
+
+    async def _run_command(self, conn: OneBotConnection, event: MessageEvent, session: str) -> bool:
+        """命中插件命令就执行并回复，返回 True 表示这条消息到此为止。"""
+        if not self._looks_like_command(event):
+            return False
+        prefix = self._command_prefix()
+        body = event.content.text.strip()[len(prefix) :].strip()
+        if not body:
+            return False
+        name, _, rest = body.partition(" ")
+        found = self.extensions.find_command(name)
+        if found is None:
+            return False  # 不是插件命令，交给正常触发流程
+        plugin, command = found
+
+        admins = {str(item).strip() for item in self.cfg.commands.admins if str(item).strip()}
+        is_admin = not admins or str(event.user_id) in admins
+        if command.admin and not is_admin:
+            await self._send_plain(conn, event, "这个命令只有管理员能用")
+            return True
+
+        cmd_ctx = CommandContext(
+            plugin=plugin,
+            name=name,
+            args=rest.split(),
+            text=rest,
+            event=event,
+            session_key=session,
+            is_group=event.is_group,
+            is_admin=is_admin,
+        )
+        log.info("命令 /%s 由 %s 触发（插件 %s）", name, event.sender_name, plugin, extra={"tag": "sys"})
+        try:
+            reply = await asyncio.wait_for(
+                command.handler(cmd_ctx), timeout=max(self.cfg.commands.timeout, 1.0)
+            )
+        except asyncio.TimeoutError:
+            reply = "命令超时了"
+        except Exception as exc:  # noqa: BLE001 - 单个命令炸了不影响别人
+            log.exception("命令 /%s 执行失败", name)
+            reply = f"命令执行失败：{exc}"
+        await self._send_plain(conn, event, reply or "")
+        return True
 
     # ---------- 回复 ----------
 
@@ -633,6 +711,7 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
     if text:
         lines.append(text)
     return "\n".join(lines)
+
 
 
 

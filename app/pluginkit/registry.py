@@ -64,6 +64,8 @@ class ExtensionRegistry:
         self.extensions: list[Extension] = []
         self.manifests: dict[str, PluginManifest] = {}
         self.routers: dict[str, Any] = {}
+        # 命令名 -> (插件 id, Command)
+        self.commands: dict[str, tuple[str, Any]] = {}
         self.pages: dict[str, Path | None] = {}
         self.errors: dict[str, str] = {}
         self._roots: dict[str, Path] = {}
@@ -116,6 +118,7 @@ class ExtensionRegistry:
     async def load(self, names: list[str] | None = None) -> None:
         self.extensions.clear()
         self.routers.clear()
+        self.commands.clear()
         self.pages.clear()
         self.errors.clear()
         self.scan()
@@ -183,6 +186,13 @@ class ExtensionRegistry:
         if router is not None:
             self.routers[name] = router
 
+        for command in getattr(module, "COMMANDS", []) or []:
+            aliases = [command.name, *(getattr(command, "aliases", None) or [])]
+            for alias in aliases:
+                if alias in self.commands:
+                    log.warning("命令 %s 被插件 %s 覆盖", alias, name)
+                self.commands[alias] = (name, command)
+
         # 页面约定：插件目录下有 pages/index.html 就能访问 /plugins/<id>/
         page = root / name / "pages" / "index.html"
         self.pages[name] = page if page.exists() else None
@@ -224,6 +234,9 @@ class ExtensionRegistry:
                 extension.ctx.settings = dict(merged)
         return merged
 
+    def find_command(self, name: str) -> tuple[str, Any] | None:
+        return self.commands.get(name)
+
     def _mark_error(self, name: str, exc: Exception) -> None:
         """记下第一次出错，面板上能看见。"""
         self.errors.setdefault(name, f"{type(exc).__name__}: {exc}")
@@ -259,6 +272,7 @@ class ExtensionRegistry:
                 log.exception("插件 %s after_reply 异常", extension.name)
                 self._mark_error(extension.name, exc)
         return text
+
 
 
 

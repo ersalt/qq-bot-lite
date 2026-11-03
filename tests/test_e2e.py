@@ -690,3 +690,61 @@ async def test_unaddressed_image_is_not_downloaded(tmp_path: Path) -> None:
 
     assert hits["count"] == 0, "没被叫到的图不该下载"
     assert not state.requests, "没被叫到就不该请求模型"
+
+@pytest.mark.asyncio
+async def test_plugin_command_replies_without_llm(tmp_path: Path) -> None:
+    """插件命令命中就直接回，不进模型、不写历史。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    plugins = tmp_path / "plugins" / "demo_cmd"
+    plugins.mkdir(parents=True)
+    (plugins / "plugin.toml").write_text('title = "命令示例"\n', encoding="utf-8")
+    (plugins / "plugin.py").write_text(
+        "from app.sdk import Command, CommandContext\n\n\n"
+        "async def handle(cmd: CommandContext) -> str:\n"
+        "    return '收到 ' + ' '.join(cmd.args)\n\n\n"
+        "COMMANDS = [Command('hello', handler=handle, help='示例')]\n\n\n"
+        "def setup(ctx):\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+    cfg.extensions.enabled = ["demo_cmd"]
+
+    llm_server = await start_server(make_fake_llm(state), llm_port)
+    bot_server = await start_server(
+        build_app(
+            cfg,
+            db_path=tmp_path / "cmd.db",
+            plugin_data_dir=tmp_path / "plugin_data",
+            plugin_dir=tmp_path / "plugins",
+        ),
+        app_port,
+    )
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            event = group_event(9201, "")
+            event["message"] = [{"type": "text", "data": {"text": "/hello 世界"}}]
+            await ws.send(json.dumps(event))
+            actions = await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert actions, "命令应该有回复"
+    joined = "".join(
+        seg["data"].get("text", "") for action in actions for seg in action["params"]["message"]
+    )
+    assert "收到 世界" in joined, joined
+    assert not state.requests, "命令不该请求模型"

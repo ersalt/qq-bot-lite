@@ -186,4 +186,26 @@ async def on_start(self):
 - 不做插件沙箱：插件是可信代码，和机器人同进程同权限。
 - 不做插件间依赖 / 事件总线：真需要时再议。
 - 不做热重载单个插件：改代码就重启进程，简单可靠。
-- 不做命令分发：机器人目前没有命令层，插件想响应指令请等命令层落地。
+- 不做子命令自动解析：`/yh approve x` 这种，子命令由插件自己按 `cmd.args` 拆。
+
+
+---
+
+## 11. 命令
+
+插件导出 `COMMANDS`，机器人接管 `/前缀 命令名 参数`：
+
+```python
+from app.sdk import Command, CommandContext
+
+async def handle(cmd: CommandContext) -> str:
+    return "收到 " + " ".join(cmd.args)
+
+COMMANDS = [Command("hello", handler=handle, help="示例", admin=False)]
+```
+
+- 命中命令**不进模型、不进历史**，直接回文本；没命中的 `/xxx` 照常走触发流程。
+- `admin=True` 的命令只允许 `[commands] admins` 里的 QQ 号执行；
+  这个列表留空表示不限制（本地自用方便，群里建议填上）。
+- handler 超时由 `[commands] timeout` 兜底，抛异常只回一句「命令执行失败」，不影响别的插件。
+- 插件之间的命令重名：后加载的覆盖先加载的，日志里会有警告。
