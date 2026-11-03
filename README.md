@@ -47,7 +47,7 @@ qq-bot-lite 自己就是 OneBot 11 **反向 WS 服务端**，SnowLuma 作为客�
 
 ```text
 ──────────────────────────────────────────────────────────
-  qq-bot-lite v0.1.0  pid 22136
+  qq-bot-lite v0.2.0  pid 22136
   反向 WS   ws://127.0.0.1:8790/onebot/v11/ws
   模型      qwen3.8-27b @ http://127.0.0.1:1234/v1  (stream=true)
   ...
