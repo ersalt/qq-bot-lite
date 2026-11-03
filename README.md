@@ -206,7 +206,7 @@ app/
 config/config.toml  唯一配置源
 personas/           人设 Markdown
 plugins/            插件（目录名即插件 id；_template 是骨架，不会被加载）
-                    真实插件是独立仓库，本仓库不收录，clone 到 plugins/<id>/ 即可
+                    真实插件由各自的独立仓库部署进来（如 whale_lexicon 的 tools/deploy-to-bot.ps1）
 data/app.db         会话数据库
 data/plugin_data/   插件运行期数据
 logs/app.log        运行日志
