@@ -36,30 +36,35 @@ function buildField(field, value) {
   wrap.dataset.key = field.key;
 
   const head = el("div", "field-head");
-  const label = el("label", null, field.label);
+  const label = el("label", "label", field.label);
   label.htmlFor = `f-${field.key}`;
   head.append(label, el("span", "key", field.key));
-  if (field.restart) head.append(el("span", "badge", "需重启"));
+  if (field.restart) {
+    const badge = el("span", "badge", "需重启");
+    badge.dataset.variant = "secondary";
+    head.append(badge);
+  }
   wrap.append(head);
 
   let control;
   if (field.type === "bool") {
-    const box = el("div", "switch");
+    const row = el("div", "switch-row");
     const input = document.createElement("input");
     input.type = "checkbox";
+    input.role = "switch";
+    input.className = "input";
     input.id = `f-${field.key}`;
     input.checked = Boolean(value);
-    const track = el("label", "track");
-    track.htmlFor = input.id;
     const mark = el("span", "state", input.checked ? "开" : "关");
     input.addEventListener("change", () => {
       mark.textContent = input.checked ? "开" : "关";
       onEdit(field, input.checked);
     });
-    box.append(input, track, mark);
-    control = box;
+    row.append(input, mark);
+    control = row;
   } else if (field.type === "select") {
     const select = document.createElement("select");
+    select.className = "select";
     select.id = `f-${field.key}`;
     for (const option of field.options || []) {
       const node = document.createElement("option");
@@ -72,6 +77,7 @@ function buildField(field, value) {
     control = select;
   } else {
     const input = document.createElement("input");
+    input.className = "input";
     input.id = `f-${field.key}`;
     input.type = field.type === "password" ? "password" : field.type === "number" ? "number" : "text";
     if (field.type === "number") {
@@ -197,7 +203,7 @@ function extras(section, block) {
 
 function llmCheckRow() {
   const row = el("div", "checkrow");
-  const button = el("button", "btn", "测试连接");
+  const button = uiButton("测试连接", { variant: "outline" });
   button.type = "button";
   const result = el("span", "checkresult", "");
   button.addEventListener("click", async () => {
@@ -227,11 +233,12 @@ function personaEditor() {
   head.append(el("span", "editor-title", "人设正文"));
   const path = el("span", "key", "");
   const counter = el("span", "key", "");
-  const save = el("button", "btn btn-primary", "保存人设");
+  const save = uiButton("保存人设");
   save.type = "button";
   head.append(path, counter, save);
 
   const area = document.createElement("textarea");
+  area.className = "textarea";
   area.id = "persona-text";
   area.spellcheck = false;
   area.rows = 16;
@@ -447,7 +454,7 @@ async function load() {
     refreshDirtyUi();
   } catch (error) {
     host.textContent = "";
-    const box = el("div", "notice", `读取配置失败：${error.message}`);
+    const box = el("div", "alert", `读取配置失败：${error.message}`);
     host.append(box);
     $("foot-state").textContent = "加载失败";
   }

@@ -1,0 +1,116 @@
+/* Basecoat 主题桥接：把它的设计令牌换成 qq-bot-lite 的 OKLCH 色板。
+   必须在 vendor/basecoat/basecoat.css 之后加载。 */
+
+:root,
+:root[data-theme="light"] {
+  --background: oklch(98.2% .005 245);
+  --foreground: oklch(20% .03 250);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(20% .03 250);
+  --popover: oklch(100% 0 0);
+  --popover-foreground: oklch(20% .03 250);
+  --muted: oklch(96% .012 240);
+  --muted-foreground: oklch(50% .02 250);
+  --accent: oklch(94% .03 230);
+  --accent-foreground: oklch(35% .07 230);
+  --primary: oklch(68.5% .155 230);
+  --primary-foreground: oklch(99% .005 240);
+  --secondary: oklch(96% .012 240);
+  --secondary-foreground: oklch(30% .03 250);
+  --destructive: oklch(60% .22 27);
+  --destructive-foreground: oklch(99% .005 240);
+  --border: oklch(91% .011 240);
+  --input: oklch(94% .012 240);
+  --ring: oklch(68.5% .155 230);
+  --radius: .75rem;
+  --font-sans: "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", ui-monospace, Consolas, monospace;
+  --success: oklch(70% .15 160);
+  --warning: oklch(78% .16 80);
+}
+
+/* 我们的暗色是 data-theme，Basecoat 认 .dark，两个都挂上 */
+:root[data-theme="dark"],
+:root[data-theme="dark"] .dark,
+.dark {
+  --background: oklch(16% .02 250);
+  --foreground: oklch(96% .01 240);
+  --card: oklch(20% .025 250);
+  --card-foreground: oklch(96% .01 240);
+  --popover: oklch(20% .025 250);
+  --popover-foreground: oklch(96% .01 240);
+  --muted: oklch(24% .02 250);
+  --muted-foreground: oklch(68% .02 240);
+  --accent: oklch(28% .05 230);
+  --accent-foreground: oklch(85% .1 230);
+  --primary: oklch(75% .14 230);
+  --primary-foreground: oklch(15% .02 250);
+  --secondary: oklch(24% .02 250);
+  --secondary-foreground: oklch(90% .01 240);
+  --destructive: oklch(62% .2 27);
+  --destructive-foreground: oklch(15% .02 250);
+  --border: oklch(30% .022 250);
+  --input: oklch(26% .02 250);
+  --ring: oklch(75% .14 230);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/* Basecoat 的表单控件默认撑满，和我们的两列网格对齐 */
+.field > .input,
+.field > .select,
+.field > .textarea { width: 100%; }
+
+/* 我们自己的小件继续用旧命名，避免和 Basecoat 撞 */
+.field-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; flex-wrap: wrap; }
+.field-head .key { font-family: var(--mono); font-size: 10.5px; color: var(--muted-foreground); opacity: .8; }
+.field .hint { margin: 7px 0 0; color: var(--muted-foreground); font-size: 11.5px; line-height: 1.55; }
+.field .err { margin: 6px 0 0; color: var(--destructive); font-size: 11.5px; }
+.field .err:empty { display: none; }
+
+/* 开关行：Basecoat 的 input[role=switch] + 我们的一行文字 */
+.switch-row { display: flex; align-items: center; gap: 10px; min-height: 34px; }
+.switch-row .state { font-family: var(--mono); font-size: 11.5px; color: var(--muted-foreground); }
+
+/* 弹窗内部布局（Basecoat 管外观，这里排内容；结构是 dialog > div > header/section/footer） */
+.dialog { width: min(560px, 100%); }
+.dialog-panel { display: flex; flex-direction: column; min-height: 0; max-height: 86vh; }
+.dialog-panel > header { padding: 16px 18px 10px; }
+.dialog-panel > header h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.dialog-panel > header p { margin: 4px 0 0; font-size: 12px; color: var(--muted-foreground); }
+.dialog-panel > section { flex: 1; min-height: 0; overflow: auto; padding: 4px 18px 16px; }
+.dialog-panel > footer { padding: 12px 18px 16px; border-top: 1px solid var(--border); }
+.dialog-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialog-group + .dialog-group { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.dialog-group-title {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--muted-foreground);
+}
+.dialog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(216px, 1fr));
+  gap: 14px 18px;
+}
+.dialog-panel > footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+/* 设置页的分组卡片沿用原来的网格 */
+.form { display: grid; gap: 18px; }
+.form section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 26px 24px;
+}
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 20px 24px; }
+.field { min-width: 0; }
+
+/* 文本域用界面字体，别掉进等宽 */
+.textarea { font-family: var(--font-sans); font-size: 13px; line-height: 1.65; }

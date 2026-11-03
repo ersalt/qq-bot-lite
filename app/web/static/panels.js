@@ -24,7 +24,7 @@ function modelPanel(section) {
       createModel();
     }
   });
-  const add = el("button", "btn btn-sm", "新建");
+  const add = uiButton("新建", { variant: "outline", size: "sm" });
   add.type = "button";
   add.addEventListener("click", createModel);
   addRow.append(input, add, sortBar(() => saveModelOrder()));
@@ -53,9 +53,9 @@ function modelPanel(section) {
 
 function modelToolRow() {
   const row = el("div", "checkrow");
-  const fetchBtn = el("button", "btn btn-sm", "获取模型");
+  const fetchBtn = uiButton("获取模型", { variant: "outline", size: "sm" });
   fetchBtn.type = "button";
-  const testBtn = el("button", "btn btn-sm", "测试连接");
+  const testBtn = uiButton("测试连接", { variant: "outline", size: "sm" });
   testBtn.type = "button";
   const result = el("span", "checkresult", "");
   const picks = el("div", "model-picks");
@@ -122,7 +122,7 @@ async function loadModels() {
 
 function sortBar(onDone) {
   const bar = el("div", "entity-sortbar");
-  const button = el("button", "btn btn-sm", "排序");
+  const button = uiButton("排序", { variant: "outline", size: "sm" });
   button.type = "button";
   button.dataset.role = "sort";
   let sorting = false;
@@ -133,7 +133,7 @@ function sortBar(onDone) {
     if (!cards) return;
     cards.classList.toggle("sorting", sorting);
     button.textContent = sorting ? "完成" : "排序";
-    button.classList.toggle("btn-primary", sorting);
+    button.dataset.variant = sorting ? "default" : "outline";
     if (!sorting) onDone();
   });
   bar.append(button);
@@ -180,9 +180,9 @@ function askDelete(card, onConfirm) {
   card.classList.add("confirming");
   const box = el("div", "entity-confirm");
   const text = el("span", "entity-confirm-text", "确定删除？");
-  const yes = el("button", "btn btn-sm entity-confirm-yes", "删除");
+  const yes = uiButton("删除", { variant: "destructive", size: "sm" });
   yes.type = "button";
-  const no = el("button", "btn btn-sm", "取消");
+  const no = uiButton("取消", { variant: "outline", size: "sm" });
   no.type = "button";
   box.append(text, yes, no);
   card.append(box);
@@ -207,7 +207,11 @@ function entityCard({ title, meta, active, badge, onActivate, onDelete }) {
   if (active) card.classList.add("active");
   card.append(el("span", "entity-name", title));
   card.append(el("span", "entity-meta", meta));
-  if (active && badge) card.append(el("span", "entity-badge", badge));
+  if (active && badge) {
+    const mark = el("span", "entity-badge badge", badge);
+    mark.dataset.variant = "secondary";
+    card.append(mark);
+  }
 
   const activate = () => {
     if (card.closest(".entity-cards")?.classList.contains("sorting")) return;
@@ -377,7 +381,7 @@ function personaPanel() {
       createPersona();
     }
   });
-  const add = el("button", "btn btn-sm", "新建");
+  const add = uiButton("新建", { variant: "outline", size: "sm" });
   add.type = "button";
   add.addEventListener("click", createPersona);
   addRow.append(input, add, sortBar(() => savePersonaOrder()));
@@ -389,11 +393,12 @@ function personaPanel() {
   head.append(el("span", "editor-title", "人设正文"));
   const path = el("span", "key", "");
   const counter = el("span", "key", "");
-  const save = el("button", "btn btn-primary", "保存人设");
+  const save = uiButton("保存人设");
   save.type = "button";
   head.append(path, counter, save);
 
   const area = document.createElement("textarea");
+  area.className = "textarea";
   area.id = "persona-text";
   area.spellcheck = false;
   area.rows = 16;

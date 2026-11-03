@@ -202,7 +202,7 @@ async def settings_fields(self, ctx, fields):
 - **页面的接口前缀自己算**：用 `location.pathname` 的相对路径，
   或者把 `ctx.panel_url` 写进模板；不要写死 `/plugins/xxx`。
 - 面板不做鉴权，和机器人面板同权限：**只在本机监听前提下使用**。
-- 想跟主面板长得一模一样，直接引 `/static/style.css`：色彩令牌、按钮、输入框、
+- 想跟主面板长得一模一样，引 /static/basecoat.css + /static/style.css + /static/theme.css：组件库是 Basecoat（本地内置），
   弹窗、toast 都在里面，主题跟着 `data-theme` 走。它属于主程序的静态资源，
   跨大版本可能调整；插件要绝对独立就自己写样式。
 - 面板里想跳去自己的设置：链 `/?plugin=<id>#plugins`，会直接打开那个插件的设置弹窗。

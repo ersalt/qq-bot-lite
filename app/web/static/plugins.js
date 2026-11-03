@@ -55,13 +55,13 @@ function pluginCard(plugin) {
 
   const actions = el("div", "plugin-actions");
   if (plugin.config?.length) {
-    const settings = el("button", "btn btn-sm", "设置");
+    const settings = uiButton("设置", { variant: "outline", size: "sm" });
     settings.type = "button";
     settings.addEventListener("click", () => openPluginDialog(plugin));
     actions.append(settings);
   }
   if (plugin.panel) {
-    const link = el("a", "btn btn-sm", "打开面板");
+    const link = uiButton("打开面板", { variant: "outline", size: "sm", href: "#" });
     link.href = plugin.panel;
     link.target = "_blank";
     link.rel = "noopener";
@@ -80,7 +80,7 @@ function pluginsPanel() {
   const wrap = el("div", "plugins");
   const bar = el("div", "plugins-bar");
   const info = el("span", "plugins-count", "读取中");
-  const refresh = el("button", "btn btn-sm", "刷新");
+  const refresh = uiButton("刷新", { variant: "outline", size: "sm" });
   refresh.type = "button";
   refresh.addEventListener("click", () => loadPlugins(true));
   bar.append(info, refresh);
@@ -115,7 +115,7 @@ async function loadPlugins(force = false) {
     paintPlugins(PLUGINS.items);
   } catch (error) {
     grid.textContent = "";
-    grid.append(el("div", "notice", `读取插件失败：${error.message}`));
+    grid.append(el("div", "alert", `读取插件失败：${error.message}`));
   }
 }
 
@@ -156,7 +156,7 @@ function emptyPlugins(soft = false) {
       "在 app/extensions/ 下放一个 .py，导出 MANIFEST 就会被这里发现。带 config 的插件会多一个“设置”按钮，挂上 router 就会多一个“打开面板”。",
     ),
   );
-  const link = el("a", "btn btn-sm", "看写插件说明");
+  const link = uiButton("看写插件说明", { variant: "outline", size: "sm", href: "#" });
   link.href = "https://github.com/";
   link.addEventListener("click", (event) => event.preventDefault());
   box.append(link);
@@ -212,23 +212,27 @@ async function openPluginDialog(plugin) {
 
 function buildPluginDialog(plugin, fields, values) {
   closeDialog();
-  const overlay = el("div", "overlay");
-  overlay.id = "dialog";
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) closeDialog();
+  // 原生 <dialog>：焦点陷阱、ESC、背景遮罩都由浏览器负责
+  const panel = document.createElement("dialog");
+  panel.id = "dialog";
+  panel.className = "dialog";
+  panel.addEventListener("click", (event) => {
+    if (event.target === panel) closeDialog();  // 点遮罩关闭
   });
 
-  const panel = el("div", "dialog");
-  const head = el("div", "dialog-head");
-  head.append(el("h2", null, plugin.title));
-  const close = el("button", "icon-btn", "×");
-  close.type = "button";
+  const panelBox = el("div", "dialog-panel");
+  const head = document.createElement("header");
+  const titleRow = el("div", "dialog-title-row");
+  titleRow.append(el("h2", null, plugin.title));
+  const close = uiButton("×", { variant: "ghost", size: "icon" });
+  close.setAttribute("aria-label", "关闭");
   close.addEventListener("click", closeDialog);
-  head.append(close);
-  panel.append(head);
-  if (plugin.description) panel.append(el("p", "dialog-sub", plugin.description));
+  titleRow.append(close);
+  head.append(titleRow);
+  if (plugin.description) head.append(el("p", null, plugin.description));
+  panelBox.append(head);
 
-  const body = el("div", "dialog-body");
+  const body = document.createElement("section");
   const controls = {};
   if (!fields.length) {
     // 插件把设置全放自己页面里了（settings_fields 返回空列表）
@@ -255,7 +259,7 @@ function buildPluginDialog(plugin, fields, values) {
     section.append(grid);
     body.append(section);
   }
-  panel.append(body);
+  panelBox.append(body);
 
   // show_if：依赖项没打开时把子选项藏起来（比如 wiki_enable 关掉就别管同步时间）
   const applyConditions = () => {
@@ -272,21 +276,18 @@ function buildPluginDialog(plugin, fields, values) {
   body.addEventListener("change", applyConditions);
   applyConditions();
 
-  const foot = el("div", "dialog-foot");
+  const foot = document.createElement("footer");
   // 愿意自己画界面的插件，设置弹窗里留个口子过去
   if (plugin.panel) {
-    const left = el("div", "dialog-foot-left");
-    const link = el("a", "btn btn-sm", "打开插件页面");
-    link.href = plugin.panel;
+    const link = uiButton("打开插件页面", { variant: "outline", size: "sm", href: plugin.panel });
     link.target = "_blank";
     link.rel = "noopener";
-    left.append(link);
-    foot.append(left);
+    foot.append(link);
   }
-  const cancel = el("button", "btn", "取消");
+  const cancel = uiButton("取消", { variant: "outline" });
   cancel.type = "button";
   cancel.addEventListener("click", closeDialog);
-  const save = el("button", "btn btn-primary", "保存");
+  const save = uiButton("保存");
   save.type = "button";
   if (!fields.length) save.hidden = true;
   save.addEventListener("click", async () => {
@@ -314,10 +315,10 @@ function buildPluginDialog(plugin, fields, values) {
     }
   });
   foot.append(cancel, save);
-  panel.append(foot);
-  overlay.append(panel);
-  document.body.append(overlay);
-  requestAnimationFrame(() => overlay.classList.add("show"));
+  panelBox.append(foot);
+  panel.append(panelBox);
+  document.body.append(panel);
+  panel.showModal();
 }
 
 function buildDialogField(field, value, host) {
@@ -325,6 +326,7 @@ function buildDialogField(field, value, host) {
   wrap.dataset.field = field.key;
   const head = el("div", "field-head");
   const label = document.createElement("label");
+  label.className = "label";
   label.textContent = field.label || field.key;
   label.htmlFor = `p-${field.key}`;
   head.append(label, el("span", "key", field.key));
@@ -332,23 +334,24 @@ function buildDialogField(field, value, host) {
 
   let read;
   if (field.type === "bool") {
-    const box = el("div", "switch");
+    const row = el("div", "switch-row");
     const input = document.createElement("input");
     input.type = "checkbox";
+    input.role = "switch";
+    input.className = "input";
     input.id = `p-${field.key}`;
     input.checked = Boolean(value);
-    const track = el("label", "track");
-    track.htmlFor = input.id;
     const mark = el("span", "state", input.checked ? "开" : "关");
     input.addEventListener("change", () => {
       mark.textContent = input.checked ? "开" : "关";
     });
-    box.append(input, track, mark);
-    wrap.append(box);
+    row.append(input, mark);
+    wrap.append(row);
     read = () => input.checked;
   } else if (field.type === "options" && Array.isArray(field.options) && field.options.length) {
     // 下拉框：选项和显示名分开给，值仍然是原始字符串
     const select = document.createElement("select");
+    select.className = "select";
     select.id = `p-${field.key}`;
     const labels = Array.isArray(field.labels) ? field.labels : [];
     const current = value === null || value === undefined ? "" : String(value);
@@ -373,12 +376,13 @@ function buildDialogField(field, value, host) {
     const area = document.createElement("textarea");
     area.id = `p-${field.key}`;
     area.rows = field.rows || 3;
-    area.className = "dialog-textarea";
+    area.className = "textarea";
     area.value = value === null || value === undefined ? "" : String(value);
     wrap.append(area);
     read = () => area.value;
   } else {
     const input = document.createElement("input");
+    input.className = "input";
     input.id = `p-${field.key}`;
     input.type = field.type === "number" ? "number" : "text";
     if (field.min !== undefined) input.min = field.min;
@@ -396,7 +400,9 @@ function buildDialogField(field, value, host) {
 
 function closeDialog() {
   const node = $("dialog");
-  if (node) node.remove();
+  if (!node) return;
+  if (typeof node.close === "function") node.close();
+  node.remove();
 }
 
 document.addEventListener("keydown", (event) => {
