@@ -63,12 +63,17 @@ def _read(path: Path) -> list[dict[str, Any]]:
     return [dict(item) for item in items if isinstance(item, dict) and item.get("name")]
 
 
+TEMPLATE_NAME = "default"
+
+
 def _write(path: Path, profiles: list[dict[str, Any]]) -> None:
     lines = ["# 模型配置。每张 [[profile]] 是一套完整参数，切换时会抄进 config.toml 的 [llm]。"]
     for profile in profiles:
         lines.append("")
         lines.append("[[profile]]")
         lines.append(f'name = {_fmt(profile["name"])}')
+        if profile.get("template"):
+            lines.append("template = true")
         for key in FIELDS:
             if key in profile and profile[key] is not None:
                 lines.append(f"{key} = {_fmt(profile[key])}")
@@ -98,10 +103,24 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
         except OSError:
             log.warning("写回 llm.profile 失败", exc_info=True)
 
+    def template() -> dict[str, Any]:
+        """隐藏的模板：新建配置照它抄，界面上不出现、也不能选中或删除。"""
+        profiles = _read(path)
+        found = next((item for item in profiles if item.get("template")), None)
+        if found is not None:
+            return found
+        seed = {"name": TEMPLATE_NAME, "template": True, **_snapshot(cfg.llm)}
+        _write(path, [seed, *profiles])
+        return seed
+
+    template()  # 启动时就把隐藏模板补上，新建时才有东西可抄
+
     def items() -> list[dict[str, Any]]:
         current = _snapshot(cfg.llm)
         result = []
         for profile in _read(path):
+            if profile.get("template"):
+                continue  # 模板只在后台用，不出现在列表里
             merged = {**current, **profile}
             result.append(
                 {
@@ -155,6 +174,8 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
         names = [item["name"] for item in profiles]
 
         if action == "activate":
+            if name == TEMPLATE_NAME and any(item.get("template") and item["name"] == name for item in profiles):
+                return JSONResponse({"ok": False, "message": "模板不能切换"}, status_code=400)
             if name not in names:
                 return JSONResponse({"ok": False, "message": "配置不存在"}, status_code=404)
             profile = next(item for item in profiles if item["name"] == name)
@@ -168,8 +189,9 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
                 return JSONResponse({"ok": False, "message": "名字不能为空"}, status_code=400)
             if name in names:
                 return JSONResponse({"ok": False, "message": "同名配置已存在"}, status_code=400)
-            profile = {"name": name, **_snapshot(cfg.llm)}
-            profiles.append(profile)
+            # 新配置照隐藏模板抄，不是抄当前正在用的那套。
+            base = {key: value for key, value in template().items() if key in FIELDS}
+            profiles.append({"name": name, **base})
             save_all(profiles)
             return JSONResponse({"ok": True, "items": items(), "active": getattr(cfg.llm, "profile", "")})
 
@@ -185,6 +207,8 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
             return JSONResponse({"ok": True, "items": items()})
 
         if action == "delete":
+            if any(item.get("template") and item["name"] == name for item in profiles):
+                return JSONResponse({"ok": False, "message": "模板不能删"}, status_code=400)
             if name == getattr(cfg.llm, "profile", ""):
                 return JSONResponse({"ok": False, "message": "正在用的配置不能删"}, status_code=400)
             if len(profiles) <= 1:
@@ -218,5 +242,7 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
             return JSONResponse({"ok": True, "items": items()})
 
         return JSONResponse({"ok": False, "message": f"不认识的动作 {action}"}, status_code=400)
+
+
 
 

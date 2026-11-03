@@ -48,11 +48,30 @@ def mount_persona_api(
         path = Path(cfg.persona.file)
         return path.stem
 
+    def template_text() -> str:
+        """隐藏模板：新人设照它抄。文件丢了就用内置的最小模板补一份。
+
+        注意里面必须保留 `人设名` 占位符，新建时才替换成真正的名字。
+        """
+        path = root / "_template.md"
+        if not path.exists():
+            try:
+                root.mkdir(parents=True, exist_ok=True)
+                path.write_text(TEMPLATE, encoding="utf-8")
+            except OSError:
+                return TEMPLATE
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError:
+            return TEMPLATE
+
     def items() -> list[dict[str, Any]]:
         if not root.exists():
             return []
         result = []
         for path in sorted(root.glob("*.md")):
+            if path.stem.startswith("_"):
+                continue  # 下划线开头的是模板，不进列表
             try:
                 text = path.read_text(encoding="utf-8")
             except OSError:
@@ -90,7 +109,7 @@ def mount_persona_api(
         if path.exists():
             return JSONResponse({"ok": False, "message": f"「{name}」已经存在"}, status_code=400)
         root.mkdir(parents=True, exist_ok=True)
-        path.write_text(TEMPLATE.replace("人设名", name), encoding="utf-8")
+        path.write_text(template_text().replace("人设名", name), encoding="utf-8")
         order = [item for item in (getattr(cfg.persona, "order", []) or []) if item != name]
         order.append(name)
         cfg.persona.order = order
@@ -161,3 +180,4 @@ def mount_persona_api(
         cfg.persona.order = order
         save_to_toml(config_path, {"persona.order": order})
         return JSONResponse({"ok": True, "items": items(), "order": order})
+

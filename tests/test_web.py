@@ -229,3 +229,35 @@ def test_plugin_toggle_writes_config(tmp_path: Path) -> None:
     assert "enabled = []" in path.read_text(encoding="utf-8")
 
 
+
+def test_model_template_is_hidden_and_copied(tmp_path: Path) -> None:
+    client, config_path = _client(tmp_path)
+    with client:
+        listing = client.get("/api/models").json()
+        assert all(item["name"] != "default" for item in listing["items"]), "模板不该出现在列表里"
+
+        created = client.post("/api/models", json={"action": "create", "name": "抄模板"})
+        assert created.status_code == 200, created.text
+
+    text = (tmp_path / "models.toml").read_text(encoding="utf-8")
+    assert "template = true" in text
+    blocks = text.split("[[profile]]")
+    template_block = next(block for block in blocks if "template = true" in block)
+    copy_block = next(block for block in blocks if 'name = "抄模板"' in block)
+    for line in ("model =", "base_url =", "max_concurrency ="):
+        assert line in template_block and line in copy_block
+
+
+def test_persona_template_is_hidden_and_copied(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+    with client:
+        created = client.post("/api/personas/create", json={"name": "新人"})
+        assert created.status_code == 200, created.text
+        names = [item["name"] for item in created.json()["items"]]
+        assert "_template" not in names
+
+    files = {path.name for path in (tmp_path / "personas").glob("*.md")}
+    assert "_template.md" in files
+    text = (tmp_path / "personas" / "新人.md").read_text(encoding="utf-8")
+    template = (tmp_path / "personas" / "_template.md").read_text(encoding="utf-8")
+    assert text == template.replace("人设名", "新人")
