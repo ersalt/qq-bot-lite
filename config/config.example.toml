@@ -1,0 +1,164 @@
+# =============================================================================
+# qq-bot-lite 配置
+# 唯一配置源。修改后重启进程生效（后续 Web 设置页会读写这个文件）。
+#
+# 链路： QQ ↔ SnowLuma ↔ qq-bot-lite ↔ LM Studio
+# =============================================================================
+
+[server]
+# 本服务监听地址。SnowLuma 反向连进来，所以这里必须是 SnowLuma 能访问到的地址。
+host = "127.0.0.1"
+port = 8790
+log_level = "info"          # debug / info / warning / error
+# 黑窗里每隔多少秒打一行状态汇总（在线时长/收发条数/首字延迟）。0 = 关闭。
+status_interval = 300
+
+[onebot]
+# 反向 WS 路径。SnowLuma 侧填 ws://127.0.0.1:8790/onebot/v11/ws
+path = "/onebot/v11/ws"
+# 与 SnowLuma 的 accessToken 保持一致（支持 Authorization: Bearer 和 ?access_token=）。
+# 这里沿用 SnowLuma 现有的 token，切换时只需改 URL，不用动 token。
+access_token = "maid-local-2026"
+# 单次 action 调用（send_group_msg 等）等待回执的超时秒数。
+action_timeout = 15.0
+# 只允许一个在线连接。新连接进来会踢掉旧的，避免重复收消息/重复回复。
+max_connections = 1
+
+[llm]
+# LM Studio 的 OpenAI 兼容端点（本机直连，不要写成 1235 那个兼容代理）。
+base_url = "http://127.0.0.1:1234/v1"
+api_key = "lm-studio"
+# 必须和 LM Studio 里已加载模型的标识完全一致。
+model = "qwen3.8-27b"
+# 采样参数。留空 = 不发送，用 LM Studio 里模型自己的设置（AstrBot 也是这样）。
+# 想强制指定就取消注释填数字，比如 temperature = 0.8。
+# temperature = 0.8
+# top_p = 0.95
+# 单次回复的 token 上限。0 = 不发送这个字段，交给模型和模板自己收尾。
+# 抓过 AstrBot 的真包：它只发 model/stream/messages/tool_choice/tools，
+# max_tokens 和 reasoning_effort 都不发，回复长度完全靠人设里那句“50字以内”约束。
+# 实测这样反而更稳：模型不会为了把配额填满而啰嗦。填了才会发。
+max_tokens = 0
+presence_penalty = 0.0
+frequency_penalty = 0.0
+timeout = 120
+# 流式返回。关掉 = 等整段生成完再一次性发。
+# 现在一条回复总共 3 秒左右，提前吐半句收益很小，关了省心（AstrBot 也是非流式）。
+stream = false
+# 思考档位：none / low / medium / high。留空 = 不发送，用模型模板默认（AstrBot 就是这样）。
+# 之前试过固定 low，确实能省 30% 思考量；但换掉人设、把回复压到 50 字之后，
+# 模型自己就只想 20~45 token 了，这一档没有额外收益，留空即可。
+reasoning_effort = ""
+# 思考量上限（纯客户端保护，不是请求参数）：边收边数思考 token，超了就掐断连接、
+# 改用无思考模式重答一次。**只有 stream = true 才有意义**，非流式拿不到思考增量。
+# 现在正常回复的思考是两位数，用不上；0 = 关闭。
+thinking_budget = 0
+# 全局同时在飞的请求数上限，对应 LM Studio 的并行槽位数（实测它有 4 个 slot）。
+# 同一会话永远只有一条请求（per-session 锁），这里限的是“几个群同时聊”。
+# 代价：并发时每条都更慢（显存和算力共享），缓存也会在槽位间失效。
+max_concurrency = 4
+# 原样并入请求体的额外字段。
+#
+# 关于思考链：这个模型是推理模型，关掉（reasoning_effort = "none"）虽然快，
+# 但活人感/理解力会明显掉，所以默认开着。
+# reasoning_effort 只是偏好提示，实测 low/medium/high 的思考量不单调，别指望它当上限。
+# 想临时提速就取消下面这行注释。
+# extra_body = { reasoning_effort = "low" }
+extra_body = {}
+
+profile = "默认"
+max_context = 0
+[context]
+# 每个会话（群/私聊各自独立）保留并送入模型的最近消息条数。
+max_messages = 100
+# 估算 token 预算。超出后从最旧的消息开始丢弃，图片先行（见 images）。
+max_tokens = 6000
+# 机器人自己的历史回复是否进入上下文。
+include_bot_replies = true
+# 连续同角色消息合并成一条。Qwen 模板对消息顺序敏感，开着更稳。
+merge_same_role = true
+# 只把“它接过的轮次”（被 @ 的那句 + 它的回复）写进历史，群里跟它无关的闲话不进，
+# 只额外保留最后一段还没回的群聊。AstrBot 就是这么攒历史的。
+# 实测全员闲聊全塞进去：97 条 / 3689 token，模型思考 267~514 token（9~13 秒）；
+# 只留问答轮次：55 条 / 2546 token，思考能落到 20~90（3.3~4.5 秒）。
+only_addressed = true
+# 历史行前面加 [HH:MM]，模型才知道“刚才”“两小时前”分别是多久。
+# 每条多花几个 token，但时间戳是固定文本，不影响 KV 缓存。
+timestamps = true
+
+[persona]
+# 相对于项目根目录，或绝对路径。
+file = "personas/大肥鱼.md"
+# 机器人在群里的显示名，用于识别“叫到我”和系统提示里的自我介绍。
+nickname = "小鲸鱼"
+
+order = ["大肥鱼", "模板测试", "命名测试", "111"]
+[trigger]
+# 私聊：是否每条都回。
+private_always = true
+# 群聊：以下条件满足任一即回复。
+group_at = true                     # 被 @ 到
+group_prefix = ""                   # 指令前缀，例如 "/"；空表示不启用
+group_keywords = []
+# 同一会话两次回复的最小间隔（秒），0 = 不限制。
+cooldown = 0.0
+
+[reply]
+# 长回复按句子切分，逐条发送，模拟真人连发。
+segments = true
+max_segments = 4
+segment_max_chars = 120
+# 两条之间的间隔秒数。
+segment_interval = 0.6
+# 引用触发消息（OneBot reply 段）。
+quote = true
+# 群里是不是每次都 @ 被回复的人。
+# 默认关：回复本身带引用，已经能看出在回谁；每条都 @ 会刷屏。
+at_sender = false
+# 模型写 “@昵称” 时，是否去群成员里查 QQ 号并换成真正的 at 段。
+# 关掉的话，@昵称 就只是一段普通文字，QQ 不会真的提到人。
+resolve_mentions = true
+# 单条回复里最多解析几个 @，防止模型抽风刷屏。
+max_mentions = 3
+# 同一会话内相同内容在这么多秒内不重复发送。
+dedupe_window = 30.0
+
+[images]
+enabled = true
+# 单条消息最多处理几张图。
+max_per_message = 2
+# 单张图片下载上限（字节）。QQ 群原图经常 5~10MB，4MB 会把正常照片全挡掉。
+# 下载后会立刻缩到 max_side 再送模型，这里只是防止把内存吃爆的上限。
+max_bytes = 20000000
+# 缩放到最长边不超过该像素后转 base64 送给模型（超限自动等比压缩）。
+# 实测同一张图：1024 → 830 prompt tokens / 3.2s，512 → 254 tokens / 2.4s。
+# 512 省 70% 图片预算，照片和表情包够用；如果经常发带字的截图，调到 768~1024 更清楚。
+max_side = 512
+# 历史里额外附带几张图（0 = 只处理当前这条）。2 张够答“刚才那张图里有什么”；
+# 每张约 250~400 token，加多了又贵又让前缀更难稳定。
+history_images = 2
+timeout = 15.0
+# 下载 QQ 图片时是否走系统代理。
+# Clash fake-ip 会把图片域名解析到 198.18.0.0/15，通常保持 false 直连更稳。
+trust_env = false
+
+[extensions]
+# 插件：填 plugins/ 下的目录名即可启用（首次启动会自动从 config.example.toml 复制一份）。**平时不用手改这里**，
+# 在设置面板的「插件」页开关就行，它会自动回写这一行（见 docs/plugins.md）。
+enabled = []
+# 外部插件目录：插件项目可以放在仓库外面，这里登记一下就能加载。
+dirs = []
+
+
+
+
+
+
+[commands]
+# /xxx 命令层：插件导出 COMMANDS 就会在这里分发。命中命令不进模型、不进历史。
+prefix = "/"
+# 能用管理员命令的 QQ 号。留空 = 不限制（本地自用方便，群里建议填上）。
+admins = []
+# 单条命令的执行上限（秒），超时就回一句“命令超时了”。
+timeout = 20.0
+

@@ -5,25 +5,32 @@ from __future__ import annotations
 import asyncio
 import logging
 import logging.handlers
+import signal
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi.responses import JSONResponse
 
 from . import __version__
-from .config import ROOT, Config, load_config
+from .config import CONFIG_PATH, ROOT, Config, load_config
 from .console import ConsoleFormatter, enable_ansi, print_banner, set_title, start_console_watchdog
 from .context.store import MessageStore
 from .core.pipeline import ChatService
-from .extensions.base import ExtensionRegistry
 from .llm.client import LLMClient
 from .media.images import ImageLoader
+from .onebot.members import MemberDirectory
 from .onebot.server import OneBotServer
 from .persona import Persona
+from .pluginkit.registry import ExtensionRegistry
 from .reply.sender import ReplySender
+from .web.model_routes import mount_model_api
+from .web.persona_routes import mount_persona_api
+from .web.plugin_routes import mount_plugin_api, mount_plugin_routers
+from .web.routes import mount_web
+from .web.settings import save_to_toml
 
 log = logging.getLogger(__name__)
 
@@ -97,13 +104,26 @@ def _install_loop_error_filter() -> None:
     loop.set_exception_handler(handler)
 
 
-def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
+def build_app(
+    cfg: Config,
+    db_path: Path | None = None,
+    config_path: Path | None = None,
+    plugin_data_dir: Path | None = None,
+    plugin_dir: Path | None = None,
+    persona_dir: Path | None = None,
+) -> FastAPI:
     store = MessageStore(db_path or (ROOT / "data" / "app.db"))
     persona = Persona(cfg)
     llm = LLMClient(cfg.llm)
     images = ImageLoader(cfg.images)
-    sender = ReplySender(cfg)
-    extensions = ExtensionRegistry(cfg.extensions.enabled)
+    members = MemberDirectory()
+    sender = ReplySender(cfg, members)
+    extensions = ExtensionRegistry(
+        cfg.extensions.enabled,
+        data_dir=plugin_data_dir,
+        plugin_dir=plugin_dir,
+        extra_dirs=[Path(item) for item in cfg.extensions.dirs if str(item).strip()],
+    )
 
     server_holder: dict[str, OneBotServer] = {}
 
@@ -123,9 +143,12 @@ def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
         images=images,
         sender=sender,
         extensions=extensions,
+        members=members,
         get_connection=get_connection,
         get_self_id=get_self_id,
     )
+    # 插件拿到的是这几个运行时对象，别的都不给。
+    extensions.services = {"store": store, "service": service, "cfg": cfg, "llm": llm}
     server = OneBotServer(cfg.onebot, service.handle)
     server_holder["server"] = server
 
@@ -159,6 +182,7 @@ def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
         set_title(f"qq-bot-lite · 启动中 · :{cfg.server.port}")
         print_banner(cfg, __version__)
         await extensions.load()
+        mount_plugin_routers(app, extensions)
         log.info("等待 SnowLuma 接入……", extra={"tag": "conn"})
         status_task = asyncio.create_task(_status_loop())
         title_task = asyncio.create_task(_title_loop())
@@ -170,6 +194,7 @@ def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
             set_title(f"qq-bot-lite · 已停止 · :{cfg.server.port}")
             log.info("正在关闭……", extra={"tag": "sys"})
             await server.shutdown()
+            await extensions.shutdown()
             await llm.aclose()
             await images.aclose()
             store.close()
@@ -179,6 +204,7 @@ def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
     app.state.cfg = cfg
     app.state.store = store
     app.state.server = server
+    app.state.plugin_registry = extensions
 
     @app.websocket(cfg.onebot.path)
     async def onebot_ws(websocket: WebSocket) -> None:  # noqa: ANN202
@@ -201,58 +227,63 @@ def build_app(cfg: Config, db_path: Path | None = None) -> FastAPI:
                 "port": cfg.server.port,
                 "extensions": cfg.extensions.enabled,
                 "db": store.stats(),
+                "counters": {
+                    "received": service.messages_seen,
+                    "replied": service.replies_sent,
+                    "first_ms": round(service.average_first_ms, 0),
+                },
             }
         )
 
-    @app.get("/", response_class=HTMLResponse)
-    async def index() -> str:
-        stats = store.stats()
-        online = server.connection is not None
-        return _STATUS_PAGE.format(
-            version=__version__,
-            connected="在线" if online else "未连接",
-            conn_cls="ok" if online else "off",
-            self_id=server.self_id or "-",
-            model=cfg.llm.model,
-            base_url=cfg.llm.base_url,
-            ws=f"{cfg.server.host}:{cfg.server.port}{cfg.onebot.path}",
-            messages=stats["messages"],
-            sessions=stats["sessions"],
-            context_messages=cfg.context.max_messages,
-            context_tokens=cfg.context.max_tokens,
-            extensions=", ".join(cfg.extensions.enabled) or "无",
-        )
+    @app.post("/api/shutdown")
+    async def shutdown(request: Request) -> JSONResponse:
+        """本机调用：让进程体面退出（exit 0），黑窗才会自己关掉。
+
+        强行 taskkill 的话 start.cmd 会看到非 0 退出码，停在 “按任意键” 上，
+        重启几次就攒一堆空窗口。
+        """
+        host = (request.client.host if request.client else "") or ""
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            raise HTTPException(status_code=403, detail="只允许本机调用")
+        log.info("收到本机停机请求，准备退出", extra={"tag": "sys"})
+
+        async def _stop() -> None:
+            await asyncio.sleep(0.2)
+            signal.raise_signal(signal.SIGINT)
+
+        asyncio.create_task(_stop())
+        return JSONResponse({"ok": True})
+
+    def save_enabled(names: list[str]) -> None:
+        path = config_path or CONFIG_PATH
+        try:
+            save_to_toml(path, {"extensions.enabled": names})
+        except OSError:
+            log.exception("写回 [extensions] enabled 失败")
+        cfg.extensions.enabled = list(names)
+
+    mount_plugin_api(app, cfg, extensions, save_enabled)
+    mount_persona_api(app, cfg, persona, config_path or CONFIG_PATH, root=persona_dir)
+    mount_model_api(app, cfg, llm, config_path or CONFIG_PATH)
+    mount_web(app, cfg, persona, config_path or CONFIG_PATH, on_llm_change=llm.reload)
 
     return app
 
 
-_STATUS_PAGE = """<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>qq-bot-lite</title>
-<style>
- body{{background:#111318;color:#d7dae0;font:14px/1.7 -apple-system,"Segoe UI",sans-serif;margin:0;padding:40px}}
- main{{max-width:720px;margin:0 auto}}
- h1{{font-size:18px;font-weight:600;margin:0 0 4px}}
- .sub{{color:#7d838f;margin-bottom:24px}}
- table{{border-collapse:collapse;width:100%}}
- td{{padding:8px 0;border-bottom:1px solid #22262e;vertical-align:top}}
- td:first-child{{color:#7d838f;width:180px}}
- code{{background:#1a1e26;padding:1px 6px;border-radius:4px;color:#9ecbff}}
- .ok{{color:#4ade80}} .off{{color:#f87171}}
-</style></head><body><main>
-<h1>qq-bot-lite <span class="sub">v{version}</span></h1>
-<div class="sub">QQ ↔ SnowLuma ↔ 本项目 ↔ LM Studio</div>
-<table>
- <tr><td>OneBot 连接</td><td class="{conn_cls}">{connected}（self_id: {self_id}）</td></tr>
- <tr><td>反向 WS 地址</td><td><code>ws://{ws}</code></td></tr>
- <tr><td>模型</td><td><code>{model}</code> @ {base_url}</td></tr>
- <tr><td>上下文</td><td>最近 {context_messages} 条 / 约 {context_tokens} tokens</td></tr>
- <tr><td>扩展</td><td>{extensions}</td></tr>
- <tr><td>数据库</td><td>{messages} 条消息 / {sessions} 个会话</td></tr>
-</table>
-<p class="sub">配置见 <code>config/config.toml</code>，改完重启生效。</p>
-</main></body></html>"""
-
-
 def create_app(config_path: Path | None = None) -> FastAPI:
     cfg = load_config(config_path)
-    return build_app(cfg)
+    return build_app(cfg, config_path=config_path)
+
+
+
+
+
+
+
+
+
+
+
+
+
+

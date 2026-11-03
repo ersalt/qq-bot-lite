@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from websockets.asyncio.client import connect
 
 from app.config import Config
@@ -26,6 +26,9 @@ GROUP_ID = 777888
 USER_ID = 123456
 
 REPLY_TEXT = "在的在的。刚才在发呆，没看见你说话。有事就说，别磨叽。"
+
+# get_msg 假装被引用那条消息里有一张图；具体地址由用到它的用例改成能访问的本地地址。
+QUOTED_IMAGE_URL = "https://example.invalid/cat.png"
 
 
 def free_port() -> int:
@@ -53,7 +56,10 @@ def make_fake_llm(state: FakeState) -> FastAPI:
         # 每次都换一句话，避免被“30 秒内相同内容去重”拦掉，让测试聚焦在触发逻辑上。
         text = REPLY_TEXT if len(state.requests) == 1 else f"第{len(state.requests)}次回复。" + REPLY_TEXT
         if not body.get("stream"):
-            return {"choices": [{"message": {"content": text}}], "usage": {"prompt_tokens": 10, "completion_tokens": 20}}
+            return {
+                "choices": [{"message": {"content": text}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+            }
 
         async def gen():
             for index in range(0, len(text), 3):
@@ -78,8 +84,7 @@ async def start_server(app: FastAPI, port: int) -> uvicorn.Server:
     return server
 
 
-def group_event(message_id: int, text: str) -> dict:
-    return {
+def group_event(message_id: int, text: str) -> dict:    return {
         "post_type": "message",
         "message_type": "group",
         "sub_type": "normal",
@@ -111,6 +116,21 @@ async def collect_actions(ws, timeout: float = 3.0) -> list[dict]:
         action = payload["action"]
         if action == "get_group_info":
             data = {"group_id": payload["params"].get("group_id"), "group_name": "测试群"}
+        elif action == "get_group_member_list":
+            data = [
+                {"user_id": 999, "card": "饺子", "nickname": "饺子"},
+                {"user_id": USER_ID, "card": "阿伟", "nickname": "阿伟"},
+            ]
+        elif action == "get_msg":
+            asked = str(payload["params"].get("message_id"))
+            # 只有指定那条“被引用的图”才带图，其余引用返回纯文字，
+            # 免得每个引用用例都被塞进一张图。
+            segments = (
+                [{"type": "image", "data": {"url": QUOTED_IMAGE_URL, "file": "cat.png"}}]
+                if asked == "4242"
+                else [{"type": "text", "data": {"text": "之前说过的话"}}]
+            )
+            data = {"message_id": payload["params"].get("message_id"), "message": segments}
         elif action.startswith("send_"):
             actions.append(payload)
             data = {"message_id": 5000 + len(actions)}
@@ -162,6 +182,268 @@ async def test_quote_reply_without_at_triggers(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_empty_reply_falls_back_without_thinking(tmp_path: Path) -> None:
+    """思考把配额吃光、正文为空时，要自动换无思考模式重答一次。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = FastAPI()
+
+    @app.get("/v1/models")
+    async def models() -> dict:
+        return {"data": [{"id": "fake-model"}]}
+
+    @app.post("/v1/chat/completions")
+    async def chat(request: Request):
+        body = await request.json()
+        state.requests.append(body)
+        text = "" if len(state.requests) == 1 else "兜底回复来了。"
+        if not body.get("stream"):
+            return {"choices": [{"message": {"content": text}}], "usage": {"completion_tokens": 0}}
+
+        async def gen():
+            for index in range(0, len(text), 3):
+                payload = {"choices": [{"delta": {"content": text[index : index + 3]}}]}
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "fallback.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            await ws.send(json.dumps(group_event(3001, "说点什么")))
+            actions = await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert len(state.requests) == 2, "空回复后应该重答一次"
+    assert state.requests[1].get("reasoning_effort") == "none", "重答要关思考"
+    assert actions, "重答的内容应该发出去"
+    assert "兜底回复" in json.dumps(actions, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_mention_in_reply_becomes_real_at(tmp_path: Path) -> None:
+    """模型写 @饺子 要变成真正的 at 段，而不是一段普通文字。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = FastAPI()
+
+    @app.get("/v1/models")
+    async def models() -> dict:
+        return {"data": [{"id": "fake-model"}]}
+
+    @app.post("/v1/chat/completions")
+    async def chat(request: Request):
+        body = await request.json()
+        state.requests.append(body)
+        text = "行，at 饺子 你过来看看。"
+        if not body.get("stream"):
+            return {"choices": [{"message": {"content": text}}]}
+
+        async def gen():
+            for index in range(0, len(text), 4):
+                payload = {"choices": [{"delta": {"content": text[index : index + 4]}}]}
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "mention.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            await ws.send(json.dumps(group_event(4001, "把饺子叫来")))
+            actions = await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert actions, "应该有回复"
+    segments = actions[0]["params"]["message"]
+    ats = [seg for seg in segments if seg["type"] == "at"]
+    assert ats and ats[0]["data"]["qq"] == "999", f"@饺子 没解析成 at 段: {segments}"
+    joined = "".join(seg["data"].get("text", "") for seg in segments)
+    assert "@饺子" not in joined, "解析成功后不该再把字面 @饺子 发出去"
+
+
+@pytest.mark.asyncio
+async def test_mention_with_explicit_qq_not_duplicated(tmp_path: Path) -> None:
+    """模型照着历史写成 “at 饺子(999)” 时，不能把括号里的号再当正文发一遍。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = FastAPI()
+
+    @app.get("/v1/models")
+    async def models() -> dict:
+        return {"data": [{"id": "fake-model"}]}
+
+    @app.post("/v1/chat/completions")
+    async def chat(request: Request):
+        body = await request.json()
+        state.requests.append(body)
+        text = "行，at 饺子(999) 你过来看看。"
+        if not body.get("stream"):
+            return {"choices": [{"message": {"content": text}}]}
+
+        async def gen():
+            for index in range(0, len(text), 4):
+                payload = {"choices": [{"delta": {"content": text[index : index + 4]}}]}
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "mention-qq.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            await ws.send(json.dumps(group_event(4002, "把饺子叫来")))
+            actions = await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert actions, "应该有回复"
+    segments = actions[0]["params"]["message"]
+    ats = [seg for seg in segments if seg["type"] == "at"]
+    assert len(ats) == 1 and ats[0]["data"]["qq"] == "999", f"at 段不对: {segments}"
+    joined = "".join(seg["data"].get("text", "") for seg in segments)
+    assert "999" not in joined, f"QQ 号被当正文重复发了: {joined!r}"
+
+
+@pytest.mark.asyncio
+async def test_inbound_at_expands_to_name_and_id(tmp_path: Path) -> None:
+    """收到 “@某人 叫这个 儿子” 时，模型必须看到 at 名字(QQ号)，不然不知道在叫谁。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(make_fake_llm(state), llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "inbound-at.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            event = group_event(6001, "")
+            event["message"] = [
+                {"type": "at", "data": {"qq": str(SELF_ID)}},
+                {"type": "text", "data": {"text": " 叫这个 "}},
+                {"type": "at", "data": {"qq": "999"}},
+                {"type": "text", "data": {"text": " 儿子"}},
+                {"type": "at", "data": {"qq": str(USER_ID)}},
+            ]
+            await ws.send(json.dumps(event))
+            await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    sent = json.dumps(state.requests[0]["messages"], ensure_ascii=False)
+    assert "at 饺子(999)" in sent, sent
+    assert f"at 阿伟({USER_ID})" in sent, sent
+
+
+@pytest.mark.asyncio
+async def test_quoted_image_is_fetched_and_sent_to_model(tmp_path: Path) -> None:
+    """引用一张图再说“识图”：要能用 get_msg 把那张图取过来送进模型。"""
+    global QUOTED_IMAGE_URL
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = make_fake_llm(state)
+
+    @app.get("/cat.png")
+    async def cat() -> Response:
+        import io
+
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (32, 32), "red").save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    old_url = QUOTED_IMAGE_URL
+    QUOTED_IMAGE_URL = f"http://127.0.0.1:{llm_port}/cat.png"
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=tmp_path / "quote-img.db"), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            event = group_event(7001, " 识图")
+            event["message"] = [
+                {"type": "reply", "data": {"id": "4242"}},
+                {"type": "at", "data": {"qq": str(SELF_ID)}},
+                {"type": "text", "data": {"text": " 识图"}},
+            ]
+            await ws.send(json.dumps(event))
+            await collect_actions(ws)
+    finally:
+        QUOTED_IMAGE_URL = old_url
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert state.requests, "应该有模型请求"
+    body = json.dumps(state.requests[0]["messages"], ensure_ascii=False)
+    assert "image_url" in body, f"引用里的图没送进模型: {body[:400]}"
+
+
+@pytest.mark.asyncio
 async def test_bare_at_without_text_still_replies(tmp_path: Path) -> None:
     """只 @ 不说话也算点名，这是群里最常见的一种“叫一下”。"""
     state = FakeState()
@@ -209,6 +491,7 @@ async def test_group_reply_has_quote_at_and_segments(tmp_path: Path) -> None:
     cfg.onebot.access_token = TOKEN
     cfg.reply.segment_interval = 0.0
     cfg.reply.max_segments = 3
+    cfg.reply.at_sender = True  # 默认关了，这条测试专门验证 @ 能力
     cfg.trigger.cooldown = 0.0
 
     llm_server = await start_server(make_fake_llm(state), llm_port)
@@ -295,7 +578,7 @@ async def test_wrong_token_is_rejected(tmp_path: Path) -> None:
     cfg.onebot.access_token = TOKEN
     bot_server = await start_server(build_app(cfg, db_path=tmp_path / "reject.db"), app_port)
     try:
-        from websockets.exceptions import InvalidStatus, ConnectionClosed
+        from websockets.exceptions import ConnectionClosed, InvalidStatus
 
         with pytest.raises((InvalidStatus, ConnectionClosed, OSError)):
             async with connect(f"ws://127.0.0.1:{app_port}/onebot/v11/ws") as ws:
@@ -303,3 +586,168 @@ async def test_wrong_token_is_rejected(tmp_path: Path) -> None:
     finally:
         bot_server.should_exit = True
         await asyncio.sleep(0.2)
+
+
+@pytest.mark.asyncio
+async def test_history_image_is_reattached_next_turn(tmp_path: Path) -> None:
+    """上一轮发的图，下一轮问“刚才那张图”时应该还在，而不是只剩 [图片] 两个字。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    app = make_fake_llm(state)
+
+    @app.get("/cat.png")
+    async def cat() -> Response:
+        import io
+
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (32, 32), "blue").save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+    cfg.reply.dedupe_window = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(
+        build_app(cfg, db_path=tmp_path / "hist-img.db", plugin_data_dir=tmp_path / "pd"), app_port
+    )
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            first = group_event(9001, " 这是啥")
+            first["message"] = [
+                {"type": "at", "data": {"qq": str(SELF_ID)}},
+                {"type": "text", "data": {"text": " 这是啥"}},
+                {"type": "image", "data": {"url": f"http://127.0.0.1:{llm_port}/cat.png", "file": "cat.png"}},
+            ]
+            await ws.send(json.dumps(first))
+            await collect_actions(ws)
+            await asyncio.sleep(0.3)
+            await ws.send(json.dumps(group_event(9002, " 刚才那张图是什么颜色")))
+            await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert len(state.requests) >= 2, "应该有两轮模型请求"
+    second = json.dumps(state.requests[-1]["messages"], ensure_ascii=False)
+    assert "image_url" in second, f"第二轮没把上一轮的图带上: {second[:400]}"
+
+@pytest.mark.asyncio
+async def test_unaddressed_image_is_not_downloaded(tmp_path: Path) -> None:
+    """没 @ 也没引用的图，连下载都不该发生：群里绝大多数图跟它无关。"""
+    state = FakeState()
+    hits = {"count": 0}
+    llm_port, app_port = free_port(), free_port()
+
+    app = make_fake_llm(state)
+
+    @app.get("/cat.png")
+    async def cat() -> Response:
+        import io
+
+        from PIL import Image
+
+        hits["count"] += 1
+        buf = io.BytesIO()
+        Image.new("RGB", (16, 16), "green").save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+
+    llm_server = await start_server(app, llm_port)
+    bot_server = await start_server(
+        build_app(cfg, db_path=tmp_path / "lazy-img.db", plugin_data_dir=tmp_path / "pd"), app_port
+    )
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            quiet = group_event(9101, "")
+            quiet["message"] = [
+                {"type": "text", "data": {"text": "随手发张图"}},
+                {"type": "image", "data": {"url": f"http://127.0.0.1:{llm_port}/cat.png", "file": "cat.png"}},
+            ]
+            await ws.send(json.dumps(quiet))
+            await asyncio.sleep(0.8)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert hits["count"] == 0, "没被叫到的图不该下载"
+    assert not state.requests, "没被叫到就不该请求模型"
+
+@pytest.mark.asyncio
+async def test_plugin_command_replies_without_llm(tmp_path: Path) -> None:
+    """插件命令命中就直接回，不进模型、不写历史。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+
+    plugins = tmp_path / "plugins" / "demo_cmd"
+    plugins.mkdir(parents=True)
+    (plugins / "plugin.toml").write_text('title = "命令示例"\n', encoding="utf-8")
+    (plugins / "plugin.py").write_text(
+        "from app.sdk import Command, CommandContext\n\n\n"
+        "async def handle(cmd: CommandContext) -> str:\n"
+        "    return '收到 ' + ' '.join(cmd.args)\n\n\n"
+        "COMMANDS = [Command('hello', handler=handle, help='示例')]\n\n\n"
+        "def setup(ctx):\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+    cfg.extensions.enabled = ["demo_cmd"]
+
+    llm_server = await start_server(make_fake_llm(state), llm_port)
+    bot_server = await start_server(
+        build_app(
+            cfg,
+            db_path=tmp_path / "cmd.db",
+            plugin_data_dir=tmp_path / "plugin_data",
+            plugin_dir=tmp_path / "plugins",
+        ),
+        app_port,
+    )
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            event = group_event(9201, "")
+            event["message"] = [{"type": "text", "data": {"text": "/hello 世界"}}]
+            await ws.send(json.dumps(event))
+            actions = await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    assert actions, "命令应该有回复"
+    joined = "".join(
+        seg["data"].get("text", "") for action in actions for seg in action["params"]["message"]
+    )
+    assert "收到 世界" in joined, joined
+    assert not state.requests, "命令不该请求模型"

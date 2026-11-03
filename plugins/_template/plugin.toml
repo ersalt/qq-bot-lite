@@ -1,0 +1,54 @@
+title = "插件模板"
+description = "复制这个目录改个名就能开工：清单、钩子、接口、面板、命令都有最小可运行版本。"
+version = "0.1.0"
+author = "贰叔"
+
+# 插件接口版本：跟着主程序走，别乱填大的
+api = 1
+# 入口文件，默认 plugin.py
+entry = "plugin.py"
+# 有 pages/index.html 才写这一行，值就是面板地址
+panel = "/plugins/_template"
+
+# ---------- 设置项 ----------
+# 面板会按 group 分组渲染；type 支持 bool / number / text / options
+# 想补动态选项就实现 Extension.settings_fields（见 plugin.py 注释）
+
+[[config]]
+key = "enabled"
+label = "启用"
+type = "bool"
+default = true
+group = "basic"
+group_label = "基础"
+help = "关掉之后钩子照常挂着，但里面的逻辑要自己判断这个开关"
+
+[[config]]
+key = "window_hours"
+label = "统计窗口（小时）"
+type = "number"
+min = 1
+max = 168
+default = 24
+group = "basic"
+group_label = "基础"
+
+[[config]]
+key = "style"
+label = "样式"
+type = "options"
+default = "plain"
+options = ["plain", "fancy"]
+labels = ["朴素", "花哨"]
+group = "basic"
+group_label = "基础"
+
+[[config]]
+key = "extra"
+label = "备注"
+type = "text"
+multiline = true
+rows = 3
+default = ""
+group = "basic"
+group_label = "基础"

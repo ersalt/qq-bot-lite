@@ -11,7 +11,11 @@
 - 图片识别（下载 → 缩放 → base64 送模型）
 - 单次模型请求，不走 Agent tool loop
 - 一份说人话的 `config/config.toml`
-- 插件式扩展点，群语汇第二阶段挂上去
+- 插件式扩展点（钩子、命令、面板、设置），规范见 [docs/plugin.md](docs/plugin.md)
+
+> **定位**：AstrBot 为云端模型设计，本地部署是它的兼容项；本项目反着来——KV 缓存、
+> 显存余量、并发槽位这些"云上看不见"的东西才是一等公民。取舍与实测账本见
+> [docs/local-first.md](docs/local-first.md)。
 
 ## 链路
 
@@ -27,6 +31,10 @@ qq-bot-lite 自己就是 OneBot 11 **反向 WS 服务端**，SnowLuma 作为客�
 双击 `启动.cmd`（`start.cmd` 是同一个东西）。它会开一个控制台窗口，首次运行自动建
 `.venv` 并装依赖（Python 3.12+，本机是 3.13.5）。
 
+配置在 `config/config.toml`。**这份文件不入库**：第一次启动会从 `config/config.example.toml`
+复制一份，照着注释改就行——模型地址、外部插件目录这些是本机的东西，不该跟着仓库走。
+`config/models.toml` 同理（示例是 `config/models.example.toml`）。
+
 启动后：
 
 - 状态页：<http://127.0.0.1:8790/>
@@ -39,15 +47,15 @@ qq-bot-lite 自己就是 OneBot 11 **反向 WS 服务端**，SnowLuma 作为客�
 
 ```text
 ──────────────────────────────────────────────────────────
-  qq-bot-lite v0.1.0  pid 22136
+  qq-bot-lite v0.2.0  pid 22136
   反向 WS   ws://127.0.0.1:8790/onebot/v11/ws
   模型      qwen3.8-27b @ http://127.0.0.1:1234/v1  (stream=true)
   ...
 ──────────────────────────────────────────────────────────
 
 19:43:08  OneBot 已连接: Address(host='127.0.0.1', port=50917)
-19:43:27  ← 群「测试群」(1058912272) | 体验极差(1140853441) | msg=183746 | 我是你的爸爸
-19:43:34  → 群「测试群」(1058912272) | 回复 体验极差(1140853441) | 1 段 | 引用=183746 | @=1140853441 | 首字 6636ms | 总计 7.9s | tokens 1566/249（思考 216，正文 33）
+19:43:27  ← 群「测试群」(123456789) | 群友B(10001) | msg=183746 | 今天开黑吗
+19:43:34  → 群「测试群」(123456789) | 回复 群友B(10001) | 1 段 | 引用=183746 | @=10001 | 首字 6636ms | 总计 7.9s | tokens 1566/249（思考 216，正文 33）
 ```
 
 - `群「群名」(群号)`：群名来自 `get_group_info`，查不到显示「未知群名」，缓存 10 分钟。
@@ -161,8 +169,12 @@ enabled = ["slang"]
 |---|---|
 | 分支 | `main`（只收合并，不直接提交）/ `develop`（日常开发）/ `feature/*`、`fix/*`、`hotfix/*` |
 | 版本来源 | 根目录 `VERSION`，代码通过 `app.__version__` 读取，不重复写死 |
-| 日志 | `CHANGELOG.md` 以上一个正式 tag 为基线，只写用户可感知的变化 |
-| 测试 | `python -m pytest tests -q`（CI 跑 3.12/3.13 × Ubuntu/Windows） |
+| 提交信息 | Conventional Commits：`feat:` / `fix:` / `docs:` / `refactor:` / `chore:` |
+| 日志 | `CHANGELOG.md` 以上一个正式 tag 为基线，只写用户可感知的变化（Keep a Changelog 格式） |
+| 代码风格 | `python -m ruff check .`（E/W/F/B/I，行长 120，见 `ruff.toml`） |
+| 测试 | `python -m pytest tests -q` |
+| 插件 | `python -m app.pluginkit.check plugins`；规范见 [docs/plugin.md](docs/plugin.md) |
+| CI | `.github/workflows/ci.yml`：3.12/3.13 × Ubuntu/Windows 跑 ruff + pytest，另加插件自检 |
 | 发布 | develop 合并到 main（`--no-ff`）→ 打附注 tag `vX.Y.Z` → GitHub Release |
 
 发布流程：
@@ -190,11 +202,14 @@ app/
   context/          SQLite 存储、上下文裁剪
   reply/            分段器、发送器（引用/@/去重）
   media/            图片下载与缩放
-  extensions/       插件式扩展点
+  pluginkit/        插件运行时：清单、加载、钩子、设置、自检
 config/config.toml  唯一配置源
 personas/           人设 Markdown
+plugins/            插件（目录名即插件 id；_template 是骨架，不会被加载）
 data/app.db         会话数据库
+data/plugin_data/   插件运行期数据
 logs/app.log        运行日志
+docs/               项目说明、插件开发、日志格式
 tests/              端到端自测
 VERSION             版本号唯一来源
 CHANGELOG.md        更新日志

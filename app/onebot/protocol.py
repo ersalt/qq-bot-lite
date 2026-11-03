@@ -52,6 +52,8 @@ class ParsedContent:
     at_targets: list[str] = field(default_factory=list)
     reply_to: str | None = None
     has_face: bool = False
+    # 整条消息只有 @、没有别的内容（“只 @ 了一下”）
+    only_mentions: bool = False
 
 
 def normalize_segments(message: Any) -> list[dict[str, Any]]:
@@ -79,22 +81,30 @@ def _cq_to_segments(text: str) -> list[dict[str, Any]]:
 def parse_content(message: Any) -> ParsedContent:
     content = ParsedContent()
     parts: list[str] = []
+    has_other = False
     for seg in normalize_segments(message):
         seg_type = seg.get("type", "")
         data = seg.get("data") or {}
         if seg_type == "text":
-            parts.append(str(data.get("text", "")))
+            text = str(data.get("text", ""))
+            if text.strip():
+                has_other = True
+            parts.append(text)
         elif seg_type == "at":
             qq = str(data.get("qq", ""))
             if qq:
                 content.at_targets.append(qq)
-                name = data.get("name") or data.get("card")
-                # 不把目标 qq 号塞进正文，只保留可读的名字（如果有）。
-                if name and qq != "all":
-                    parts.append(f"@{name}")
+                if qq == "all":
+                    parts.append(" at 全体成员")
+                else:
+                    name = data.get("name") or data.get("card")
+                    # 用 "at" 而不是 "@"：模型会把 @ 当成普通符号照抄，
+                    # 前后都写 at 才能让“谁在叫谁”这件事无歧义。
+                    parts.append(f" at {name}({qq})" if name else f" at {qq}")
         elif seg_type == "image":
             source_url = data.get("url") or data.get("file")
             if source_url:
+                has_other = True
                 content.images.append(
                     ImageRef(
                         url=data.get("url"),
@@ -111,6 +121,7 @@ def parse_content(message: Any) -> ParsedContent:
         # 其它未知段（forward、file 等）忽略，避免污染上下文。
 
     content.text = " ".join("".join(parts).split())
+    content.only_mentions = bool(content.at_targets) and not has_other
     return content
 
 

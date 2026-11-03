@@ -1,0 +1,32 @@
+# 模型配置。每张 [[profile]] 是一套完整参数，切换时会抄进 config.toml 的 [llm]。
+
+[[profile]]
+name = "default"
+template = true
+base_url = "http://127.0.0.1:1234/v1"
+api_key = "lm-studio"
+model = "qwen3.8-27b"
+max_context = 0
+max_tokens = 0
+reasoning_effort = ""
+stream = false
+thinking_budget = 0
+timeout = 120
+max_concurrency = 4
+presence_penalty = 0.0
+frequency_penalty = 0.0
+
+[[profile]]
+name = "默认"
+base_url = "http://127.0.0.1:1234/v1"
+api_key = "lm-studio"
+model = "qwen3.8-27b"
+max_context = 0
+max_tokens = 0
+reasoning_effort = ""
+stream = false
+thinking_budget = 0
+timeout = 120.0
+max_concurrency = 4
+presence_penalty = 0.0
+frequency_penalty = 0.0

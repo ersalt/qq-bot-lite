@@ -12,18 +12,22 @@ if not exist ".venv\Scripts\python.exe" (
     if errorlevel 1 goto fail
 )
 
+rem A graceful stop exits 0, so this window closes on its own.
 ".venv\Scripts\python.exe" -m app %*
 set "EXITCODE=%errorlevel%"
 
-if not "%EXITCODE%"=="0" (
-    echo.
-    echo [exit] code %EXITCODE% - see logs\app.log
-    echo Press any key to close this window...
-    pause >nul
-)
+if "%EXITCODE%"=="0" goto :eof
+
+echo.
+echo [exit] code %EXITCODE% - see logs\app.log
+echo This window closes by itself in 10 seconds.
+rem Bounded wait instead of "pause": when the process was force-killed the
+rem window must not sit there waiting for a keypress (that is how orphan
+rem windows pile up across restarts).
+timeout /t 10 >nul 2>&1
 goto :eof
 
 :fail
 echo.
 echo [fail] setup failed. Check that Python is in PATH.
-pause
+timeout /t 20 >nul 2>&1

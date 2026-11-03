@@ -1,0 +1,19 @@
+title = "演示插件"
+description = "测试用的最小插件。"
+version = "0.1.0"
+author = "test"
+panel = "/plugins/demo"
+
+[[config]]
+key = "window_hours"
+label = "窗口（小时）"
+type = "number"
+min = 1
+max = 720
+default = 24
+
+[[config]]
+key = "show_latency"
+label = "显示延迟"
+type = "bool"
+default = true

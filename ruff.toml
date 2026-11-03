@@ -1,0 +1,10 @@
+# ruff：只开能抓 bug 的规则，风格问题不吵人（行长 120）
+line-length = 120
+target-version = "py312"
+
+[lint]
+# E/W pycodestyle · F pyflakes · B bugbear · I import 排序
+select = ["E", "W", "F", "B", "I"]
+
+[lint.isort]
+known-first-party = ["app", "tests"]

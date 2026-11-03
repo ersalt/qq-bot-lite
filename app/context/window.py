@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as _dt
 from typing import Any
 
 from ..config import ContextConfig
@@ -9,37 +10,83 @@ from ..llm.tokens import estimate_text_tokens
 from .store import StoredMessage
 
 
-def _render(message: StoredMessage, is_group: bool) -> str:
+def _stamp(message: StoredMessage) -> str:
+    return _dt.datetime.fromtimestamp(message.created_at).strftime("%H:%M")
+
+
+def _render(message: StoredMessage, is_group: bool, timestamps: bool) -> str:
     text = message.content.strip()
     if not text:
-        # 纯图片/表情消息在历史里没有任何文字信息，塞 “[图片]” 只会让模型以为图坏了。
-        return ""
+        # 纯图片消息也要在历史里占一行，否则模型不知道那时候发过图。
+        return "[图片]" if getattr(message, "images", None) else ""
     if message.role == "user" and is_group:
         speaker = message.speaker or (str(message.user_id) if message.user_id else "某人")
-        return f"{speaker}: {text}"
+        prefix = f"[{_stamp(message)}] " if timestamps else ""
+        return f"{prefix}{speaker}: {text}"
     return text
 
 
-def build_history(messages: list[StoredMessage], cfg: ContextConfig, *, is_group: bool) -> list[dict[str, Any]]:
+def keep_addressed(messages: list[StoredMessage]) -> list[StoredMessage]:
+    """只留“它接过的轮次”，外加最后一段还没回应的群聊。
+
+    AstrBot 的历史就是这么攒的：只有被它接了的话才进对话历史，群里的闲话不进
+    （它以一条一次性的转录块补上，注入完就删）。我们原来是全员闲聊全塞进去，
+    模型每轮都要先把几十条跟它无关的话读一遍再判断谁在说什么 —— 实测思考量
+    会从 100 上下涨到 267~514，正好是那 4~6 秒的来源。
+    """
+    kept: list[StoredMessage] = []
+    for index, message in enumerate(messages):
+        following = messages[index + 1] if index + 1 < len(messages) else None
+        if message.role == "assistant" or (following is not None and following.role == "assistant"):
+            kept.append(message)
+
+    # 末尾那段还没被回应的群聊保留，否则模型不知道“刚才聊到哪了”。
+    # 这一段是它这次要接的上下文，和 AstrBot 的 backlog 块等价。
+    if messages and messages[-1].role != "assistant":
+        start = len(messages) - 1
+        while start > 0 and messages[start - 1].role != "assistant":
+            start -= 1
+        kept.extend(messages[start:])
+    return kept
+
+
+def build_history(
+    messages: list[StoredMessage],
+    cfg: ContextConfig,
+    *,
+    is_group: bool,
+    budget_override: int | None = None,
+) -> list[dict[str, Any]]:
     """messages 为从旧到新的顺序，返回同样顺序的 chat messages（不含当前这条）。"""
     items: list[dict[str, Any]] = []
     for message in messages:
         if message.role == "assistant" and not cfg.include_bot_replies:
             continue
-        text = _render(message, is_group)
+        text = _render(message, is_group, cfg.timestamps)
         if not text:
             continue
-        items.append({"role": message.role, "content": text})
+        item: dict[str, Any] = {"role": message.role, "content": text}
+        if message.images:
+            # 路径留着，发请求前由 pipeline 决定要不要把图真的带上。
+            item["images"] = list(message.images)
+        items.append(item)
 
     # token 预算：从新到旧保留，超预算就丢最旧的。
-    budget = max(cfg.max_tokens, 256)
-    kept: list[dict[str, Any]] = []
-    used = 0
-    for item in reversed(items):
-        cost = estimate_text_tokens(item["content"]) + 4
-        if kept and used + cost > budget:
-            break
-        kept.append(item)
-        used += cost
-    kept.reverse()
-    return kept
+    # 注意这里是"一次退到 60%"，不是一条一条挤：窗口每轮只掉一条的话前缀每轮都在动，
+    # llama.cpp 的前缀缓存就永远命不中，预填充等于每次全量重来。
+    budget = max(budget_override if budget_override is not None else cfg.max_tokens, 256)
+    total = sum(estimate_text_tokens(item["content"]) + 4 for item in items)
+    if total > budget:
+        target = int(budget * 0.6)
+        kept: list[dict[str, Any]] = []
+        used = 0
+        for item in reversed(items):
+            cost = estimate_text_tokens(item["content"]) + 4
+            if kept and used + cost > target:
+                break
+            kept.append(item)
+            used += cost
+        kept.reverse()
+        return kept
+    return items
+
