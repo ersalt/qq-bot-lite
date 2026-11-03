@@ -3,6 +3,9 @@
 本文件是插件与机器人之间的**契约**。改这里的任何一条，都属于破坏性变更，
 必须升 `api` 版本号，并在 CHANGELOG 里写清楚迁移方法。
 
+「一个插件该长什么样」（目录结构、日志、依赖、发布清单）见 **[plugin-spec.md](plugin-spec.md)**；
+本文只讲接口签名。
+
 当前：`api = 1`
 
 ---
@@ -120,12 +123,13 @@ async def on_start(self):
 | 属性 | 说明 |
 |---|---|
 | `ctx.name` | 插件 id |
+| `ctx.title` | 清单里的标题，日志和面板上显示的名字 |
 | `ctx.settings` | `settings.toml` 合并默认值后的字典；面板改完会同步刷新 |
 | `ctx.data_dir` | `data/plugin_data/<id>/`，已创建，随便写 |
 | `ctx.services` | 下面这张表 |
 | `ctx.panel_url` | 有 `panel` 时的路径，否则 `None` |
 | `ctx.spawn(coro)` | 起一个受管的后台任务 |
-| `ctx.log` | 带插件名的 logger |
+| `ctx.log` | 日志：自动加 `[标题]` 前缀，logger 名 `plugin.<id>`（写法见 plugin-spec「日志」） |
 
 `ctx.services` 目前提供：
 

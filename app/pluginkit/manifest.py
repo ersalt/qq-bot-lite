@@ -27,11 +27,13 @@ class PluginContext:
     """插件能用到的运行时对象，故意给得很少。"""
 
     name: str
+    title: str = ""
     settings: dict[str, Any] = field(default_factory=dict)
     services: dict[str, Any] = field(default_factory=dict)
     data_dir: Path | None = None
     panel_url: str | None = None
-    log: logging.Logger = field(default_factory=lambda: logging.getLogger("plugin"))
+    # PluginLogger（LoggerAdapter）：日志自动带 [标题] 前缀
+    log: Any = field(default_factory=lambda: logging.getLogger("plugin"))
     _tasks: list[asyncio.Task] = field(default_factory=list)
 
     def get(self, key: str, default: Any = None) -> Any:

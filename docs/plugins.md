@@ -3,6 +3,11 @@
 插件放在项目根的 `plugins/`，每个插件一个文件夹；运行期数据写到
 `data/plugin_data/<插件名>/`。两边分开放，升级或搬家时不会互相踩。
 
+- 规范（目录结构、日志、依赖、发布清单）：[plugin-spec.md](plugin-spec.md)
+- 接口签名（钩子、命令、面板）：[plugin-api.md](plugin-api.md)
+- 骨架：复制 `plugins/_template/`，改个名就能开工
+- 自检：`.venv\Scripts\python.exe -m app.pluginkit.check plugins/<名字>`
+
 ```
 plugins/
   stats/                 一个插件一个目录，目录名就是插件名

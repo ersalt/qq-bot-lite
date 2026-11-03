@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>插件模板</title>
+<script>
+  // 主题跟主面板共用一份选择
+  (function () {
+    try {
+      var saved = localStorage.getItem("qqbotlite-theme");
+      var query = new URLSearchParams(location.search).get("theme");
+      var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var theme = query === "dark" || query === "light" ? query : saved || (prefersDark ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    } catch (error) {}
+  })();
+</script>
+<!-- 跟主面板一套令牌和控件样式 -->
+<link rel="stylesheet" href="/static/style.css">
+<style>
+  .page { max-width: 720px; }
+  .stat { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 18px; }
+  .stat .card { padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+  .stat .label { font-size: 12px; color: var(--muted-foreground); }
+  .stat .value { font-size: 22px; font-weight: 600; margin-top: 4px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="head">
+    <div class="brand">
+      <span class="brand-name">插件模板</span>
+      <span class="brand-ver">_template</span>
+    </div>
+    <div class="head-right">
+      <div class="status"><span class="dot" id="dot"></span><span id="state">读取中</span></div>
+      <button class="icon-btn" id="theme" type="button" aria-label="切换主题">◐</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="toolbar-text">
+      <h1>运行状态</h1>
+      <p>数据来自 <code>./data</code>，每 5 秒刷一次</p>
+    </div>
+    <div class="toolbar-actions">
+      <button class="btn" id="refresh" type="button">刷新</button>
+    </div>
+  </div>
+
+  <div class="stat">
+    <div class="card"><div class="label">收到消息</div><div class="value" id="messages">-</div></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+async function load() {
+  try {
+    const res = await fetch("./data");
+    const data = await res.json();
+    if (!res.ok || data.ok === false) throw new Error(data.message || `HTTP ${res.status}`);
+    $("messages").textContent = data.messages ?? 0;
+    $("dot").className = "dot on";
+    $("state").textContent = "正常";
+  } catch (error) {
+    $("dot").className = "dot off";
+    $("state").textContent = "接口不可达";
+  }
+}
+
+$("refresh").addEventListener("click", load);
+$("theme").addEventListener("click", () => {
+  const html = document.documentElement;
+  const next = html.getAttribute("data-theme") === "dark" ? "light" : "dark";
+  html.setAttribute("data-theme", next);
+  try { localStorage.setItem("qqbotlite-theme", next); } catch (error) {}
+});
+
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

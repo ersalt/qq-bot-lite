@@ -11,7 +11,7 @@
 - 图片识别（下载 → 缩放 → base64 送模型）
 - 单次模型请求，不走 Agent tool loop
 - 一份说人话的 `config/config.toml`
-- 插件式扩展点，群语汇第二阶段挂上去
+- 插件式扩展点（钩子、命令、面板、设置），规范见 [docs/plugin-spec.md](docs/plugin-spec.md)
 
 > **定位**：AstrBot 为云端模型设计，本地部署是它的兼容项；本项目反着来——KV 缓存、
 > 显存余量、并发槽位这些"云上看不见"的东西才是一等公民。取舍与实测账本见
@@ -194,11 +194,14 @@ app/
   context/          SQLite 存储、上下文裁剪
   reply/            分段器、发送器（引用/@/去重）
   media/            图片下载与缩放
-  extensions/       插件式扩展点
+  pluginkit/        插件运行时：清单、加载、钩子、设置、自检
 config/config.toml  唯一配置源
 personas/           人设 Markdown
+plugins/            插件（目录名即插件 id；_template 是骨架，不会被加载）
 data/app.db         会话数据库
+data/plugin_data/   插件运行期数据
 logs/app.log        运行日志
+docs/               设计文档、插件规范、实测账本
 tests/              端到端自测
 VERSION             版本号唯一来源
 CHANGELOG.md        更新日志

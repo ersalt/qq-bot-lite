@@ -17,6 +17,7 @@ from typing import Any
 from ..onebot.events import MessageEvent
 from . import DATA_DIR, PLUGIN_DIR
 from .manifest import PluginContext, PluginManifest, discover, entry_path, read_manifest
+from .plugin_log import make_plugin_logger
 from .settings_store import defaults_from, load as load_settings, save as save_settings
 
 log = logging.getLogger(__name__)
@@ -197,11 +198,12 @@ class ExtensionRegistry:
 
         context = PluginContext(
             name=name,
+            title=manifest.display,
             settings=self.settings_of(name, defaults_from(manifest.config)),
             services=self.services,
             data_dir=data_dir,
             panel_url=manifest.panel,
-            log=logging.getLogger(f"plugin.{name}"),
+            log=make_plugin_logger(name, manifest.display),
         )
         factory = getattr(module, "setup", None)
         if factory is not None:
