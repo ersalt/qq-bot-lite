@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -37,14 +38,40 @@ def mount_web(
 ) -> None:
     """挂上首页、配置读写接口和静态资源。"""
 
-    app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+    class _NoCacheStatic(StaticFiles):
+        """静态资源永远回源校验：改完 CSS/JS 刷新即可，不用手动强刷。"""
+
+        async def get_response(self, path, scope):  # type: ignore[override]
+            response = await super().get_response(path, scope)
+            response.headers["Cache-Control"] = "no-cache, must-revalidate"
+            return response
+
+    app.mount("/static", _NoCacheStatic(directory=str(STATIC)), name="static")
+
+    _ASSET_RE = re.compile(r'/static/([A-Za-z0-9_.-]+)')
+
+    def _stamp_assets(html: str) -> str:
+        """给资源加 ?v=<修改时间>，浏览器换新文件时一定重新下载。"""
+
+        def repl(match: re.Match[str]) -> str:
+            name = match.group(1)
+            path = STATIC / name
+            try:
+                version = int(path.stat().st_mtime)
+            except OSError:
+                version = 0
+            return f"/static/{name}?v={version}"
+
+        return _ASSET_RE.sub(repl, html)
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> HTMLResponse:
         from .. import __version__
 
         html = PAGE.read_text(encoding="utf-8").replace("__VERSION__", __version__)
-        return HTMLResponse(html)
+        response = HTMLResponse(_stamp_assets(html))
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
 
     @app.get("/api/config")
     async def read_config() -> JSONResponse:
@@ -178,4 +205,5 @@ def mount_web(
             return JSONResponse(
                 {"ok": False, "message": f"{type(exc).__name__}: {exc}", "latency_ms": round(elapsed)}
             )
+
 
