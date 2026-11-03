@@ -20,7 +20,20 @@ def mount_plugin_routers(app: FastAPI, registry: ExtensionRegistry) -> None:
     """把插件自带的面板挂上去。重复调用只会补挂新增的。"""
     from fastapi.responses import FileResponse
 
+    from fastapi.responses import RedirectResponse
+
     mounted: set[str] = getattr(app.state, "plugin_pages", set())
+    # 允许不带尾斜杠访问：页面里的相对路径要按 /plugins/<id>/ 解析
+    for name in registry.pages:
+        try:
+            app.add_api_route(
+                f"/plugins/{name}",
+                lambda name=name: RedirectResponse(f"/plugins/{name}/"),
+                methods=["GET"],
+                include_in_schema=False,
+            )
+        except Exception:  # noqa: BLE001
+            pass
     for name, page in registry.pages.items():
         if not page or name in mounted:
             continue
@@ -123,6 +136,7 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
 
         merged = registry.update_settings(name, {**defaults, **clean})
         return JSONResponse({"ok": True, "settings": merged, "message": "设置已保存"})
+
 
 
 

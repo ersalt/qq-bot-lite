@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient
 from app.config import load_config
 from app.main import build_app
 
+FIXTURE_PLUGINS = Path(__file__).parent / "fixtures" / "plugins"
+
+
 BASE_TOML = """\
 # 测试用配置
 [llm]
@@ -180,24 +183,24 @@ def test_llm_check_reports_failure_gracefully(tmp_path: Path) -> None:
 
 
 def test_plugins_listed_with_manifest(tmp_path: Path) -> None:
-    client, _ = _client(tmp_path)
+    client, _ = _client(tmp_path, plugin_dir=FIXTURE_PLUGINS)
     with client:
         payload = client.get("/api/plugins").json()
         names = [item["name"] for item in payload["plugins"]]
-        assert "stats" in names, payload
-        stats = next(item for item in payload["plugins"] if item["name"] == "stats")
-        assert stats["title"] == "运行统计"
-        assert stats["panel"] == "/plugins/stats"
-        assert stats["error"] is None
+        assert "demo" in names, payload
+        demo = next(item for item in payload["plugins"] if item["name"] == "demo")
+        assert demo["title"] == "演示插件"
+        assert demo["panel"] == "/plugins/demo"
+        assert demo["error"] is None
         # 测试用的配置里没有启用任何插件
-        assert stats["enabled"] is False
+        assert demo["enabled"] is False
 
 
 def test_plugin_settings_roundtrip(tmp_path: Path) -> None:
-    client, _ = _client(tmp_path)
+    client, _ = _client(tmp_path, plugin_dir=FIXTURE_PLUGINS)
     with client:
         response = client.post(
-            "/api/plugins/stats/settings",
+            "/api/plugins/demo/settings",
             json={"values": {"window_hours": 48, "show_latency": False}},
         )
         assert response.status_code == 200, response.text
@@ -205,27 +208,27 @@ def test_plugin_settings_roundtrip(tmp_path: Path) -> None:
         assert saved["window_hours"] == 48
         assert saved["show_latency"] is False
 
-        bad = client.post("/api/plugins/stats/settings", json={"values": {"window_hours": 99999}})
+        bad = client.post("/api/plugins/demo/settings", json={"values": {"window_hours": 99999}})
         assert bad.status_code == 400
 
     # 落在配置文件同目录的 plugins.toml 里
-    text = (tmp_path / "plugin_data" / "stats" / "settings.toml").read_text(encoding="utf-8")
+    text = (tmp_path / "plugin_data" / "demo" / "settings.toml").read_text(encoding="utf-8")
     assert "window_hours = 48" in text
     assert "show_latency = false" in text
 
 
 def test_plugin_toggle_writes_config(tmp_path: Path) -> None:
-    client, path = _client(tmp_path)
+    client, path = _client(tmp_path, plugin_dir=FIXTURE_PLUGINS)
     with client:
-        response = client.post("/api/plugins/stats/enabled", json={"enabled": True})
+        response = client.post("/api/plugins/demo/enabled", json={"enabled": True})
         assert response.status_code == 200, response.text
         payload = response.json()
         assert payload["ok"] is True
-        stats = next(item for item in payload["plugins"] if item["name"] == "stats")
-        assert stats["enabled"] is True
-        assert 'enabled = ["stats"]' in path.read_text(encoding="utf-8")
+        demo = next(item for item in payload["plugins"] if item["name"] == "demo")
+        assert demo["enabled"] is True
+        assert 'enabled = ["demo"]' in path.read_text(encoding="utf-8")
 
-        off = client.post("/api/plugins/stats/enabled", json={"enabled": False})
+        off = client.post("/api/plugins/demo/enabled", json={"enabled": False})
         assert off.status_code == 200
     assert "enabled = []" in path.read_text(encoding="utf-8")
 
@@ -333,4 +336,5 @@ def test_plugin_hook_error_is_surfaced(tmp_path: Path) -> None:
         plugins = client.get("/api/plugins").json()["plugins"]
         item = next(p for p in plugins if p["name"] == "boom")
         assert item["last_error"], "钩子异常没有反映到面板数据里"
+
 
