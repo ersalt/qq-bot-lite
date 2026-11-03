@@ -43,6 +43,10 @@ class ImageLoader:
         self.cache_dir = cache_dir or (
             Path(__file__).resolve().parent.parent.parent / "data" / "images"
         )
+        # 计数器：收到多少张、真下载多少张、多少张命中了本地缓存
+        self.seen = 0
+        self.downloaded = 0
+        self.cache_hits = 0
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(cfg.timeout, connect=5.0),
             follow_redirects=True,
@@ -67,14 +71,23 @@ class ImageLoader:
         if not self.cfg.enabled or not refs:
             return []
         prepared: list[PreparedImage] = []
+        hits_before = self.cache_hits
         for ref in refs[: self.cfg.max_per_message]:
+            self.seen += 1
             raw = await self._fetch(ref)
             if not raw:
                 continue
+            self.downloaded += 1
             try:
                 prepared.append(await asyncio.to_thread(self._store, raw))
             except Exception:  # noqa: BLE001 - 坏图不能拖垮回复
                 log.warning("图片解码失败: %s", ref.source, exc_info=True)
+        if prepared:
+            log.info(
+                "图片准备：下载 %d 张，本地缓存命中 %d 张",
+                self.downloaded,
+                self.cache_hits - hits_before,
+            )
         return prepared
 
     def _store(self, raw: bytes) -> "PreparedImage":
@@ -86,7 +99,9 @@ class ImageLoader:
         suffix = ".png" if "png" in header else ".jpg"
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         path = self.cache_dir / f"{digest}{suffix}"
-        if not path.exists():
+        if path.exists():
+            self.cache_hits += 1
+        else:
             path.write_bytes(binary)
         return PreparedImage(path=path, data_url=data_url)
 

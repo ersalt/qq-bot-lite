@@ -137,16 +137,21 @@ class ChatService:
                 log.debug("展开 at 失败", exc_info=True)
         preview = event.content.text.strip()[:60] or ("[图片]" if event.content.images else "")
         if event.content.images:
-            # OneBot 实现之间字段差异很大：有的只给 url，有的只给 file（本地文件名）。
-            # 图片出问题时先看这一行，才知道是没解析出来还是没下载下来。
-            log.info(
-                "图片 %d 张: %s",
-                len(event.content.images),
-                " | ".join(
-                    f"url={(ref.url or '-')[:90]} file={ref.file or '-'}" for ref in event.content.images
-                ),
-                extra={"tag": "sys"},
-            )
+            # 注意：这里只是“消息里带了图”，不代表要下载。
+            # 真正的下载发生在要回复时（见下面的 images.prepare），所以平时只打一行短日志。
+            if decision.should:
+                # OneBot 实现之间字段差异很大：有的只给 url，有的只给 file（本地文件名）。
+                # 图片出问题时先看这一行，才知道是没解析出来还是没下载下来。
+                log.info(
+                    "图片 %d 张: %s",
+                    len(event.content.images),
+                    " | ".join(
+                        f"url={(ref.url or '-')[:90]} file={ref.file or '-'}" for ref in event.content.images
+                    ),
+                    extra={"tag": "sys"},
+                )
+            else:
+                log.debug("图片 %d 张（不在跟它说话，跳过下载）", len(event.content.images))
         self.messages_seen += 1
         at_field = await self._at_field(conn, event)
         if decision.should:
