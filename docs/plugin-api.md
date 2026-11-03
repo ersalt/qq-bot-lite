@@ -40,7 +40,7 @@ app_version = ">=0.2"               # 可选，不满足只警告，不拦加载
 [[config]]                          # 可选，有值才显示「设置」
 key = "auto_learn"                  # 存进 data/plugin_data/<id>/settings.toml 的键
 label = "自动学习"
-type = "bool"                       # bool / number / text
+type = "bool"                       # bool / number / text / options
 default = true
 help = "说明文字"
 group = "learning"                  # 可选，设置弹窗按这个分组
@@ -48,10 +48,19 @@ group_label = "自动学习"             # 可选，分组的标题
 show_if = { key = "wiki_enable", value = true }   # 可选，依赖另一个开关
 min = 0                             # number 类型的上下限，超了会被拒绝
 max = 100
+
+# type = "text" 时：multiline = true 渲染成多行输入框（JSON 之类的长文本）
+# type = "options" 时：下拉框，值和显示名分开给
+options = ["auto", "off", "custom"]
+labels = ["自动识别", "保持思考", "自定义"]
 ```
 
 `group` 相同的字段会落在一块，没写 `group` 的单独成块（无标题）。
 `show_if` 依赖的键变化时，字段会跟着显示/隐藏，值仍然照常保存。
+下拉框配 `show_if` 正好能做「选到自定义才显示 JSON 输入框」。
+
+**字段不够用时**：插件可以实现 `settings_fields(ctx, fields)` 这个兜底接口，
+在运行时改写字段（补动态选项、按状态隐藏）。见第 6 节。
 
 **元数据与代码分开**是硬要求：列插件时绝不能执行插件代码，
 写坏的插件只能显示成一张带错误的卡，不能把列表拖垮。
@@ -139,11 +148,31 @@ async def on_start(self):
 | `on_message(hook)` | 每条消息判定完触发、回复之前 | 不能，只观察 |
 | `system_prompt(hook)` | 拼 system 提示词时 | 返回一段文本，追加到 system 末尾 |
 | `user_suffix(hook)` | 拼当前这条用户消息时 | 返回一段文本，追加到这条消息末尾 |
+| `settings_fields(ctx, fields)` | 打开插件设置弹窗时 | 返回新的字段列表，改渲染 |
 | `after_reply(hook, text)` | 文本要发出去之前 | 返回改写后的文本 |
 
 **注入优先用 `user_suffix` 而不是 `system_prompt`**：system 是静态的，模型能一直命中
 KV 缓存；塞进 system 会让缓存从注入点断开，每条消息都要重新算一遍前面那些历史。
 只有「永远都在、且不随消息变化」的内容才适合放 system。
+
+**`settings_fields` 是设置面板的兜底渲染接口**：入参是 `plugin.toml` 里声明的那份字段，
+返回新的列表就按新的渲染，返回 `None` 或抛异常就用原样。典型用法：
+
+```python
+async def settings_fields(self, ctx, fields):
+    models = await ctx.services["llm"].list_models()   # 运行时才知道的选项
+    for field in fields:
+        if field["key"] == "learn_model" and models:
+            field["type"] = "options"
+            field["options"] = [""] + models
+            field["labels"] = ["跟主模型一致"] + models
+    return fields
+```
+
+清单里的声明是**兜底**（接口挂了、模型服务连不上，照旧是输入框），
+这条钩子是**增强**。真想完全自定义布局，就在插件自己的 `pages/index.html` 里画，
+设置弹窗会带一个「打开插件页面」的入口；如果设置全在页面里，`settings_fields`
+直接返回 `[]`，主面板就不显示通用表单了，只留那个入口。
 
 `HookContext`：
 

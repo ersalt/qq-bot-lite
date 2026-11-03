@@ -46,6 +46,17 @@ class Extension:
         """追加到当前这条用户消息末尾（比塞 system 省 KV 缓存）。"""
         return None
 
+    async def settings_fields(
+        self, ctx: "PluginContext", fields: list[dict[str, Any]]
+    ) -> list[dict[str, Any]] | None:
+        """设置面板的兜底渲染接口。
+
+        `fields` 是 plugin.toml 里声明的字段（已转成 dict）。返回新的列表就按新的渲染，
+        返回 None / 抛异常就用原样。插件可以拿它补动态选项（比如可用的模型列表）、
+        按运行状态隐藏字段，或者干脆换一套布局。
+        """
+        return None
+
     async def after_reply(self, ctx: HookContext, text: str) -> str:
         return text
 
@@ -101,6 +112,30 @@ class ExtensionRegistry:
         merged = dict(defaults or {})
         merged.update(load_settings(self.settings_path(name)))
         return merged
+
+    async def settings_schema(self, name: str) -> list[dict[str, Any]]:
+        """设置面板要渲染的字段：清单声明为底，插件可以用 settings_fields 改写。"""
+        manifest = self.manifests.get(name) or read_manifest(self.root_of(name), name)
+        fields = [dict(field) for field in manifest.config]
+        extension = next(
+            (ext for ext in self.extensions
+             if getattr(getattr(ext, "ctx", None), "name", None) == name),
+            None,
+        )
+        hook = getattr(extension, "settings_fields", None) if extension else None
+        if hook is None:
+            return fields
+        try:
+            result = hook(extension.ctx, [dict(field) for field in fields])
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception:  # noqa: BLE001 - 兜底接口自己炸了就用清单里的
+            log.exception("插件 %s settings_fields 异常", name)
+            return fields
+        if isinstance(result, list):
+            # 返回空列表 = 这个插件的设置全靠自己的页面，主面板不给通用表单
+            return [field for field in result if isinstance(field, dict) and field.get("key")]
+        return fields
 
     def list_plugins(self) -> list[dict[str, Any]]:
         if not self.manifests:

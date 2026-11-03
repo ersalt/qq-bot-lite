@@ -192,7 +192,25 @@ async function togglePlugin(plugin, enabled, button) {
 
 /* ---------- 设置弹窗 ---------- */
 
-function openPluginDialog(plugin) {
+/* 字段从 /api/plugins/<id>/settings 现拿：插件可以在这里补动态选项
+   （比如本机装了哪些模型）。拿不到就用列表里带的那份兜底。 */
+async function openPluginDialog(plugin) {
+  let fields = plugin.config || [];
+  let values = plugin.settings || {};
+  try {
+    const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.name)}/settings`);
+    const data = await response.json();
+    if (response.ok && data.ok) {
+      fields = data.fields || fields;
+      values = data.values || values;
+    } else if (data.message) {
+      toast(data.message, "bad");
+    }
+  } catch (error) { /* 接口不通就按清单里的字段渲染 */ }
+  buildPluginDialog(plugin, fields, values);
+}
+
+function buildPluginDialog(plugin, fields, values) {
   closeDialog();
   const overlay = el("div", "overlay");
   overlay.id = "dialog";
@@ -212,9 +230,13 @@ function openPluginDialog(plugin) {
 
   const body = el("div", "dialog-body");
   const controls = {};
+  if (!fields.length) {
+    // 插件把设置全放自己页面里了（settings_fields 返回空列表）
+    body.append(el("p", "hint", "这个插件没有通用设置项，参数在它自己的页面里调。"));
+  }
   // 按 group 分块：字段多了以后平铺一屏根本找不到
   const groups = [];
-  for (const field of plugin.config) {
+  for (const field of fields) {
     const key = field.group || "";
     let group = groups.find((item) => item.key === key);
     if (!group) {
@@ -228,7 +250,7 @@ function openPluginDialog(plugin) {
     if (group.label) section.append(el("h4", "dialog-group-title", group.label));
     const grid = el("div", "dialog-grid");
     for (const field of group.fields) {
-      controls[field.key] = buildDialogField(field, plugin.settings?.[field.key], grid);
+      controls[field.key] = buildDialogField(field, values?.[field.key], grid);
     }
     section.append(grid);
     body.append(section);
@@ -237,7 +259,7 @@ function openPluginDialog(plugin) {
 
   // show_if：依赖项没打开时把子选项藏起来（比如 wiki_enable 关掉就别管同步时间）
   const applyConditions = () => {
-    for (const field of plugin.config) {
+    for (const field of fields) {
       const condition = field.show_if;
       if (!condition || !condition.key) continue;
       const node = body.querySelector(`[data-field="${field.key}"]`);
@@ -251,11 +273,22 @@ function openPluginDialog(plugin) {
   applyConditions();
 
   const foot = el("div", "dialog-foot");
+  // 愿意自己画界面的插件，设置弹窗里留个口子过去
+  if (plugin.panel) {
+    const left = el("div", "dialog-foot-left");
+    const link = el("a", "btn btn-sm", "打开插件页面");
+    link.href = plugin.panel;
+    link.target = "_blank";
+    link.rel = "noopener";
+    left.append(link);
+    foot.append(left);
+  }
   const cancel = el("button", "btn", "取消");
   cancel.type = "button";
   cancel.addEventListener("click", closeDialog);
   const save = el("button", "btn btn-primary", "保存");
   save.type = "button";
+  if (!fields.length) save.hidden = true;
   save.addEventListener("click", async () => {
     const values = {};
     for (const [key, control] of Object.entries(controls)) values[key] = control();
@@ -313,6 +346,37 @@ function buildDialogField(field, value, host) {
     box.append(input, track, mark);
     wrap.append(box);
     read = () => input.checked;
+  } else if (field.type === "options" && Array.isArray(field.options) && field.options.length) {
+    // 下拉框：选项和显示名分开给，值仍然是原始字符串
+    const select = document.createElement("select");
+    select.id = `p-${field.key}`;
+    const labels = Array.isArray(field.labels) ? field.labels : [];
+    const current = value === null || value === undefined ? "" : String(value);
+    let known = false;
+    field.options.forEach((option, index) => {
+      const node = document.createElement("option");
+      node.value = String(option);
+      node.textContent = labels[index] || String(option);
+      if (String(option) === current) known = true;
+      select.append(node);
+    });
+    if (!known && current) {
+      const node = document.createElement("option");
+      node.value = current;
+      node.textContent = current;
+      select.append(node);
+    }
+    select.value = current;
+    wrap.append(select);
+    read = () => select.value;
+  } else if (field.multiline) {
+    const area = document.createElement("textarea");
+    area.id = `p-${field.key}`;
+    area.rows = field.rows || 3;
+    area.className = "dialog-textarea";
+    area.value = value === null || value === undefined ? "" : String(value);
+    wrap.append(area);
+    read = () => area.value;
   } else {
     const input = document.createElement("input");
     input.id = `p-${field.key}`;

@@ -94,6 +94,16 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
             }
         )
 
+    @app.get("/api/plugins/{name}/settings")
+    async def read_settings(name: str) -> JSONResponse:
+        """打开设置弹窗时现算一遍字段：插件可以在这里补动态选项。"""
+        manifest = registry.manifests.get(name) or read_manifest(registry.root_of(name), name)
+        if manifest.error:
+            return JSONResponse({"ok": False, "message": manifest.error}, status_code=400)
+        fields = await registry.settings_schema(name)
+        values = registry.settings_of(name, defaults_from(fields))
+        return JSONResponse({"ok": True, "fields": fields, "values": values})
+
     @app.post("/api/plugins/{name}/settings")
     async def save_settings(name: str, request: Request) -> JSONResponse:
         try:
@@ -109,8 +119,9 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
             return JSONResponse({"ok": False, "message": manifest.error}, status_code=400)
 
         clean: dict[str, Any] = {}
-        defaults = defaults_from(manifest.config)
-        for field in manifest.config:
+        fields = await registry.settings_schema(name)
+        defaults = defaults_from(fields)
+        for field in fields:
             key = field["key"]
             if key not in values:
                 continue

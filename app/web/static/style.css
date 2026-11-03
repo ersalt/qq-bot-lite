@@ -605,6 +605,26 @@ select {
   bottom: 0;
   background: var(--card);
 }
+.dialog-foot-left { margin-right: auto; }
+
+.dialog-textarea {
+  width: 100%;
+  min-height: 58px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--foreground);
+  background: var(--card);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-control);
+  padding: 8px 10px;
+  resize: vertical;
+}
+.dialog-textarea:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 22%, transparent);
+}
 
 @media (max-width: 760px) {
   .plugin-grid { grid-template-columns: 1fr; }

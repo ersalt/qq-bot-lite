@@ -309,6 +309,73 @@ def test_plugin_package_import_and_page(tmp_path: Path) -> None:
         assert page.status_code == 200 and "demo page" in page.text
 
 
+def test_plugin_settings_fields_hook(tmp_path: Path) -> None:
+    """settings_fields 能改字段（比如把输入框换成动态下拉），保存仍走同一份字段。"""
+    root = tmp_path / "plugins" / "dyn"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text(
+        'title = "动态设置"\n'
+        '[[config]]\nkey = "model"\nlabel = "模型"\ntype = "text"\ndefault = ""\n',
+        encoding="utf-8",
+    )
+    (root / "plugin.py").write_text(
+        "from app.pluginkit.registry import Extension\n\n"
+        "class Dyn(Extension):\n"
+        "    name = 'dyn'\n"
+        "    async def settings_fields(self, ctx, fields):\n"
+        "        for field in fields:\n"
+        "            if field['key'] == 'model':\n"
+        "                field['type'] = 'options'\n"
+        "                field['options'] = ['', 'a-model']\n"
+        "                field['labels'] = ['跟主模型一致', 'a-model']\n"
+        "        return fields\n\n"
+        "def setup(ctx):\n"
+        "    return Dyn()\n",
+        encoding="utf-8",
+    )
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        client.post("/api/plugins/dyn/enabled", json={"enabled": True})
+        data = client.get("/api/plugins/dyn/settings").json()
+        assert data["ok"], data
+        field = next(item for item in data["fields"] if item["key"] == "model")
+        assert field["type"] == "options"
+        assert field["options"] == ["", "a-model"]
+
+        saved = client.post("/api/plugins/dyn/settings", json={"values": {"model": "a-model"}})
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["settings"]["model"] == "a-model"
+
+
+def test_plugin_settings_can_be_empty(tmp_path: Path) -> None:
+    """返回空列表 = 设置全在自己页面里，主面板不给通用表单。"""
+    root = tmp_path / "plugins" / "own"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text(
+        'title = "自带界面"\n'
+        '[[config]]\nkey = "secret"\nlabel = "密钥"\ntype = "text"\ndefault = ""\n',
+        encoding="utf-8",
+    )
+    (root / "plugin.py").write_text(
+        "from app.pluginkit.registry import Extension\n\n"
+        "class Own(Extension):\n"
+        "    name = 'own'\n"
+        "    async def settings_fields(self, ctx, fields):\n"
+        "        return []\n\n"
+        "def setup(ctx):\n"
+        "    return Own()\n",
+        encoding="utf-8",
+    )
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        client.post("/api/plugins/own/enabled", json={"enabled": True})
+        data = client.get("/api/plugins/own/settings").json()
+        assert data["ok"], data
+        assert data["fields"] == []
+
+
 def test_plugin_hook_error_is_surfaced(tmp_path: Path) -> None:
     """钩子抛异常要被记到 last_error，而不是只写日志。"""
     root = tmp_path / "plugins" / "boom"
