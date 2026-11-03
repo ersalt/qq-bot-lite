@@ -110,8 +110,15 @@ help = "面板上那句“最近 N 小时”就是它"
 面板上的开关等价于把名字加进 / 移出 `config/config.toml` 的 `[extensions] enabled`。
 启用和停用都是热生效：钩子立刻挂上或摘掉，面板路由同时挂载或撤掉，不用重启进程。
 
-## 例：内建的 stats
+## 去哪看真例子
 
-`plugins/stats/` 是一个完整例子：`plugin.toml` 里两个设置项，`plugin.py` 里
-一个持久化计数器（写在 `ctx.data_dir` 里，重启后还在）、一个 `/data` 接口和一个小面板页，
-卡片上「设置」和「打开面板」两个按钮都能用。
+- `tests/fixtures/plugins/demo/`：最小可运行插件，`plugin.py` + `plugin.toml` 十来行，
+  适合拿来抄骨架。
+- `tests/test_web.py` 里的 `test_plugin_package_import_and_page`：带 `core/` 子包和
+  `pages/index.html` 的写法长什么样，看这一段最直接。
+- 真在线上跑的那个是 `whale_lexicon`（独立仓库，在 `config/config.toml` 的
+  `[extensions] dirs` 里登记）：侧栏 + 列表 + 批量操作 + 弹窗的完整面板，
+  接口统一按 `{ok, message}` 返回，可以直接对着改。
+
+面板页想跟主面板同款，`<link rel="stylesheet" href="/static/style.css">` 就能复用全部
+色彩令牌和控件样式。
