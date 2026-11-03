@@ -8,7 +8,7 @@
 - 骨架：复制 `plugins/_template/`，改个名就能开工
 - 自检：`.venv\Scripts\python.exe -m app.pluginkit.check plugins/<名字>`
 - 代码风格：`.venv\Scripts\python.exe -m ruff check .`（与主程序同一份 `ruff.toml` 规则）
-- 样式：页面直接引 `/static/basecoat.css` + `/static/theme.css`（Basecoat 组件库，本地内置、无外部请求）；`/static/legacy.css` 是迁移期间给旧插件页兜底的，新插件别引
+- 样式：页面直接引 `/static/basecoat.css` + `/static/theme.css`（Basecoat 组件库，本地内置、无外部请求）
 
 ```
 plugins/

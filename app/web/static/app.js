@@ -114,9 +114,14 @@ function render() {
   nav.textContent = "";
 
   for (const section of state.schema) {
-    const chip = el("a", "chip");
-    chip.href = `#${section.id}`;
+    // Basecoat 的 tabs 语义：role=tab + aria-selected，外观仍是我们那枚浮动胶囊
+    const chip = el("button", "chip");
+    chip.type = "button";
+    chip.role = "tab";
+    chip.id = `tab-${section.id}`;
     chip.dataset.section = section.id;
+    chip.setAttribute("aria-controls", `sec-${section.id}`);
+    chip.setAttribute("aria-selected", "false");
     chip.append(el("span", null, section.title));
     chip.append(el("span", "dirty-dot"));
     chip.addEventListener("click", (event) => {
@@ -127,6 +132,8 @@ function render() {
 
     const block = el("section", "panel");
     block.id = `sec-${section.id}`;
+    block.role = "tabpanel";
+    block.setAttribute("aria-labelledby", `tab-${section.id}`);
     block.dataset.section = section.id;
     block.hidden = true;
 
@@ -177,8 +184,11 @@ function showSection(id) {
       panel.setAttribute("data-anim", "in");
     }
   }
-  for (const chip of document.querySelectorAll("#nav a")) {
-    chip.classList.toggle("active", chip.dataset.section === target);
+  for (const chip of document.querySelectorAll("#nav [role=tab]")) {
+    const on = chip.dataset.section === target;
+    chip.classList.toggle("active", on);
+    chip.setAttribute("aria-selected", on ? "true" : "false");
+    chip.tabIndex = on ? 0 : -1;
   }
 
   const section = state.schema.find((item) => item.id === target);

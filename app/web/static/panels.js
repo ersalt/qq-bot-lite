@@ -199,7 +199,7 @@ function askDelete(card, onConfirm) {
 function entityCard({ title, meta, active, badge, onActivate, onDelete }) {
   // 用 div 而不是 button：button 在 Chrome 里拖拽行为不稳定，
   // 而且 draggable 属性默认是关的，dragstart 根本不会触发。
-  const card = el("div", "entity-card");
+  const card = el("div", "entity-card card");
   card.setAttribute("role", "button");
   card.tabIndex = 0;
   card.draggable = true;

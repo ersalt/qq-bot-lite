@@ -154,8 +154,12 @@ body {
 }
 .pillbar::-webkit-scrollbar { display: none; }
 
-.pillbar a {
+.pillbar [role="tab"] {
   position: relative;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -171,8 +175,8 @@ body {
   white-space: nowrap;
   transition: background .15s ease, color .15s ease;
 }
-.pillbar a:hover { color: var(--foreground); background: var(--muted); }
-.pillbar a.active {
+.pillbar [role="tab"]:hover { color: var(--foreground); background: var(--muted); }
+.pillbar [role="tab"][aria-selected="true"] {
   color: var(--accent-foreground);
   background: var(--accent);
   font-weight: 500;
@@ -184,7 +188,7 @@ body {
   opacity: 0;
   transition: opacity .15s ease;
 }
-.pillbar a.dirty .dirty-dot { opacity: 1; }
+.pillbar [role="tab"].dirty .dirty-dot { opacity: 1; }
 
 /* ---------- 工具条 ---------- */
 
@@ -485,7 +489,7 @@ body {
 .plugin-card:nth-child(3) { animation-delay: .06s; }
 .plugin-card:nth-child(4) { animation-delay: .09s; }
 .plugin-card:nth-child(n+5) { animation-delay: .12s; }
-.pillbar a.active { animation: chip-pop .2s ease; }
+.pillbar [role="tab"][aria-selected="true"] { animation: chip-pop .2s ease; }
 
 /* 主题切换：从点击位置圆形展开（参考站是同款） */
 ::view-transition-old(root),
@@ -643,17 +647,14 @@ body {
 .entity-cards:empty { display: none; }
 
 .entity-card {
+  /* 外观交给 Basecoat 的 .card，这里只管排版和交互 */
   position: relative;
   display: grid;
   gap: 4px;
   padding: 13px 16px;
   text-align: left;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--card);
   color: var(--foreground);
   cursor: pointer;
-  box-shadow: var(--shadow-card);
   transition: border-color .15s ease, background .15s ease, transform .06s ease;
 }
 .entity-card:hover { border-color: color-mix(in oklab, var(--border) 45%, var(--muted-foreground)); }
@@ -679,15 +680,12 @@ body {
   white-space: nowrap;
 }
 .entity-badge {
+  /* 卡片是 Basecoat 的 .card（overflow:hidden），徽章得留在里面 */
   position: absolute;
-  top: -7px;
-  right: 12px;
+  top: 8px;
+  right: 10px;
   font-size: 10px;
   padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  box-shadow: 0 1px 2px oklch(0% 0 0/.15);
 }
 .entity-del {
   position: absolute;
