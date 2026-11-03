@@ -7,33 +7,30 @@ const PERSONAS = { items: [], active: "" };
 /* ---------- 模型 ---------- */
 
 function modelPanel(section) {
-  const wrap = el("div", "split-layout");
+  const wrap = el("div", "entity-panel");
 
-  const side = el("aside", "split-side");
-  side.append(el("div", "split-title", "模型配置"));
-  const list = el("div", "bubble-list");
+  const list = el("div", "entity-cards");
   list.id = "model-list";
-  side.append(list);
+  wrap.append(list);
 
-  const addRow = el("div", "split-add");
+  const addRow = el("div", "entity-add");
   const input = document.createElement("input");
   input.type = "text";
   input.id = "model-new";
-  input.placeholder = "新配置名";
-  const add = el("button", "btn btn-sm", "添加");
+  input.placeholder = "新配置名，回车即添加";
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      createModel();
+    }
+  });
+  const add = el("button", "btn btn-sm", "新建");
   add.type = "button";
   add.addEventListener("click", createModel);
   addRow.append(input, add);
-  side.append(addRow);
+  wrap.append(addRow);
 
-  const remove = el("button", "btn btn-sm split-danger", "删除当前配置");
-  remove.type = "button";
-  remove.id = "model-delete";
-  remove.addEventListener("click", deleteModel);
-  side.append(remove);
-  wrap.append(side);
-
-  const main = el("div", "split-main");
+  const main = el("div", "entity-body");
   const basic = el("div", "grid");
   const advanced = el("div", "grid");
   for (const field of section.fields) {
@@ -119,22 +116,47 @@ async function loadModels() {
   }
 }
 
+function entityCard({ title, meta, active, badge, onActivate, onDelete }) {
+  const card = el("button", "entity-card");
+  card.type = "button";
+  if (active) card.classList.add("active");
+  card.append(el("span", "entity-name", title));
+  card.append(el("span", "entity-meta", meta));
+  if (active && badge) card.append(el("span", "entity-badge", badge));
+  card.addEventListener("click", onActivate);
+
+  if (onDelete && !active) {
+    const del = el("span", "entity-del", "×");
+    del.setAttribute("role", "button");
+    del.setAttribute("title", "删除");
+    del.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onDelete();
+    });
+    card.append(del);
+  }
+  return card;
+}
+
 function paintModels() {
   const list = $("model-list");
   if (!list) return;
   list.textContent = "";
   if (!MODELS.items.length) {
-    list.append(el("p", "hint", "还没有保存过的配置。改好参数后点「添加」存一套。"));
+    list.append(el("p", "hint", "还没有保存过的配置。改好参数后点「新建」存一套。"));
     return;
   }
   for (const item of MODELS.items) {
-    const button = el("button", "bubble");
-    button.type = "button";
-    if (item.active) button.classList.add("active");
-    button.append(el("span", "bubble-name", item.name));
-    button.append(el("span", "bubble-sub", item.model || "未指定模型"));
-    button.addEventListener("click", () => activateModel(item.name));
-    list.append(button);
+    list.append(
+      entityCard({
+        title: item.name,
+        meta: item.model || "未指定模型",
+        active: item.active,
+        badge: "使用中",
+        onActivate: () => activateModel(item.name),
+        onDelete: () => deleteModel(item.name),
+      }),
+    );
   }
 }
 
@@ -195,16 +217,16 @@ async function createModel() {
   }
 }
 
-async function deleteModel() {
-  if (!MODELS.active) {
-    toast("当前没有生效的配置", "bad");
+async function deleteModel(name) {
+  if (!name || name === MODELS.active) {
+    toast("正在用的配置不能删，先切到别的", "bad");
     return;
   }
   try {
     const response = await fetch("/api/models", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", name: MODELS.active }),
+      body: JSON.stringify({ action: "delete", name }),
     });
     const data = await response.json();
     if (!response.ok || !data.ok) {
@@ -213,7 +235,7 @@ async function deleteModel() {
     }
     MODELS.items = data.items || [];
     paintModels();
-    toast("已删除");
+    toast(`已删除「${name}」`);
   } catch (error) {
     toast(`删除失败：${error.message}`, "bad");
   }
@@ -222,23 +244,26 @@ async function deleteModel() {
 /* ---------- 人设 ---------- */
 
 function personaPanel() {
-  const wrap = el("div", "persona-panel");
-  const cards = el("div", "persona-cards");
+  const wrap = el("div", "entity-panel");
+  const cards = el("div", "entity-cards");
   cards.id = "persona-cards";
   wrap.append(cards);
 
-  const addRow = el("div", "split-add persona-add");
+  const addRow = el("div", "entity-add");
   const input = document.createElement("input");
   input.type = "text";
   input.id = "persona-new";
-  input.placeholder = "新人设名";
+  input.placeholder = "新人设名，回车即新建";
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      createPersona();
+    }
+  });
   const add = el("button", "btn btn-sm", "新建");
   add.type = "button";
   add.addEventListener("click", createPersona);
-  const remove = el("button", "btn btn-sm", "删除当前");
-  remove.type = "button";
-  remove.addEventListener("click", deletePersona);
-  addRow.append(input, add, remove);
+  addRow.append(input, add);
   wrap.append(addRow);
 
   const editor = el("div", "editor");
@@ -295,14 +320,16 @@ function paintPersonas() {
   if (!host) return;
   host.textContent = "";
   for (const item of PERSONAS.items) {
-    const card = el("button", "persona-card");
-    card.type = "button";
-    if (item.active) card.classList.add("active");
-    card.append(el("span", "persona-name", item.name));
-    card.append(el("span", "persona-meta", `${item.chars} 字`));
-    if (item.active) card.append(el("span", "persona-badge", "使用中"));
-    card.addEventListener("click", () => activatePersona(item.name));
-    host.append(card);
+    host.append(
+      entityCard({
+        title: item.name,
+        meta: `${item.chars} 字`,
+        active: item.active,
+        badge: "使用中",
+        onActivate: () => activatePersona(item.name),
+        onDelete: () => deletePersona(item.name),
+      }),
+    );
   }
 }
 
@@ -358,10 +385,13 @@ async function createPersona() {
   }
 }
 
-async function deletePersona() {
-  if (!PERSONAS.active) return;
+async function deletePersona(name) {
+  if (!name || name === PERSONAS.active) {
+    toast("正在用的人设不能删，先切到别的", "bad");
+    return;
+  }
   try {
-    const response = await fetch(`/api/personas/${encodeURIComponent(PERSONAS.active)}`, { method: "DELETE" });
+    const response = await fetch(`/api/personas/${encodeURIComponent(name)}`, { method: "DELETE" });
     const data = await response.json();
     if (!response.ok || !data.ok) {
       toast(data.message || "删除失败", "bad");
@@ -369,7 +399,7 @@ async function deletePersona() {
     }
     PERSONAS.items = data.items || [];
     paintPersonas();
-    toast("已删除，正在使用的人设不能删");
+    toast(`已删除「${name}」`);
   } catch (error) {
     toast(`删除失败：${error.message}`, "bad");
   }

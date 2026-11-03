@@ -797,3 +797,86 @@ select {
   .split-layout { grid-template-columns: 1fr; }
   .split-side { position: static; }
 }
+
+/* ---------- 卡片列表（模型 / 人设共用） ---------- */
+
+.entity-panel { display: grid; gap: 14px; }
+.entity-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(188px, 1fr));
+  gap: 12px;
+}
+.entity-cards:empty { display: none; }
+
+.entity-card {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 13px 16px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  box-shadow: var(--shadow-card);
+  transition: border-color .15s ease, background .15s ease, transform .06s ease;
+}
+.entity-card:hover { border-color: color-mix(in oklab, var(--border) 45%, var(--muted-foreground)); }
+.entity-card:active { transform: translateY(1px); }
+.entity-card.active {
+  border-color: var(--ring);
+  background: color-mix(in oklab, var(--accent) 42%, var(--card));
+}
+.entity-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  padding-right: 24px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entity-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entity-badge {
+  position: absolute;
+  top: -7px;
+  right: 12px;
+  font-size: 10px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 1px 2px oklch(0% 0 0/.15);
+}
+.entity-del {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--muted-foreground);
+  opacity: .55;
+  transition: background .15s ease, color .15s ease, opacity .15s ease;
+}
+.entity-card:hover .entity-del { opacity: 1; }
+.entity-del:hover {
+  background: color-mix(in oklab, var(--destructive) 16%, transparent);
+  color: var(--destructive);
+}
+
+.entity-add { display: flex; gap: 8px; }
+.entity-add input { flex: 1; min-width: 0; }
+.entity-add button { flex: none; }
+.entity-body { display: grid; gap: 16px; }

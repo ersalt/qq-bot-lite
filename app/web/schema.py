@@ -81,8 +81,8 @@ SECTIONS: list[dict[str, Any]] = [
         "title": "模型",
         "desc": "本地 LM Studio 的 OpenAI 兼容端点。留空的项不会出现在请求体里。",
         "fields": [
-            _f("llm.base_url", "接口地址", help="本机直连，别填代理地址", restart=True),
-            _f("llm.api_key", "API Key", "password", help="LM Studio 不校验，随便填", restart=True),
+            _f("llm.base_url", "接口地址", help="本机直连，别填代理地址。保存时会重连，不用重启"),
+            _f("llm.api_key", "API Key", "password", help="LM Studio 不校验，随便填"),
             _f("llm.model", "模型标识", help="必须和 LM Studio 里已加载的模型名完全一致"),
             _f(
                 "llm.max_context",
@@ -349,3 +349,4 @@ _ADVANCED_KEYS = {
 for _section in SECTIONS:
     for _field in _section["fields"]:
         _field["group"] = "advanced" if _field["key"] in _ADVANCED_KEYS else "basic"
+
