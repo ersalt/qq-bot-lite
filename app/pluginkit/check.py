@@ -15,7 +15,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import ENTRY_FILE, META_FILE, PLUGIN_DIR
+from . import META_FILE, PLUGIN_DIR
 from .manifest import SUPPORTED_API, read_manifest
 
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")

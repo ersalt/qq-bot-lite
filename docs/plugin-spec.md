@@ -204,26 +204,83 @@ COMMANDS = [Command("mycmd", handler=handle, help="说明", admin=True)]
 
 ---
 
-## 10. 版本与兼容
+## 10. 安全
 
-- `version` 语义化：`x.y.z`；数据/接口不兼容就升 `x`。
-- `api` 是插件接口版本，主程序只加载 `api <= 自己支持的最高版本` 的插件。
-- 插件对主程序的新要求写进 `app_version`（如 `">=0.2"`），不满足只警告、不拦加载。
+插件是**进程内代码**，没有沙箱：它和机器人同一个 Python 进程、同样的权限。
+所以「装插件」等于「信任作者」，这条要写进使用说明里，别让用户以为是隔离开的。
+
+对插件作者：
+
+- 只从可信来源拿插件；发布前把 README 里「它读了什么、写了什么、连了哪些网」写清楚。
+- 密钥只放 `ctx.settings`（`settings.toml`），不写进代码、不贴进日志。
+- 对外请求加超时；拿到用户内容（聊天、昵称、头像）不要外发到没说明的第三方。
+- 文件读写限定在 `ctx.data_dir`；别去读主程序的 `config/config.toml`、`data/app.db`。
+- 数据库操作走参数化查询，别拼 SQL。
+
+对使用者：
+
+- 装新插件前扫一眼 `plugin.py` 里的 `import` 和外链域名。
+- 面板没有账号体系，**只在本机监听时用**；别把 8790 暴露到公网。
 
 ---
 
-## 11. 发布前清单
+## 11. 版本与兼容
 
-- [ ] `python -m app.pluginkit.check plugins/<id>` 没有 `×`（错误）
+- `version` 语义化（SemVer）：`x.y.z`；数据/接口不兼容升 `x`，加功能升 `y`，修 bug 升 `z`。
+- `api` 是插件接口版本，主程序只加载 `api <= 自己支持的最高版本` 的插件。
+- 插件对主程序的新要求写进 `app_version`（如 `">=0.2"`），不满足只警告、不拦加载。
+- **废弃策略**：`api` 升版后，旧接口至少保留一个大版本（一个 `x`）；删之前先在
+  `CHANGELOG` 里标「deprecated」，日志里对调用方打一次 warning。
+- `CHANGELOG` 按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 的写法：
+  `## x.y.z` + 无序列表，说人话，不贴 commit 列表。
+- 提交信息用 Conventional Commits：`feat:` / `fix:` / `docs:` / `refactor:` / `chore:`。
+
+---
+
+## 12. 工具链与 CI
+
+本地三件事，跟主程序同一套：
+
+```powershell
+python -m ruff check .                 # 静态检查（E/W/F/B/I，行长 120）
+python -m pytest tests -q              # 单元测试
+python -m app.pluginkit.check <插件目录>  # 规范自检
+```
+
+`ruff.toml` 建议：
+
+```toml
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "W", "F", "B", "I"]
+```
+
+CI（GitHub Actions）至少跑这个矩阵——插件代码和主程序一样，不能只在开发机的一个 Python 上验过：
+
+```yaml
+strategy:
+  matrix:
+    os: [ubuntu-latest, windows-latest]
+    python: ["3.12", "3.13"]
+```
+
+---
+
+## 13. 发布前清单
+
+- [ ] `python -m app.pluginkit.check <插件目录>` 没有 `×`（错误）
+- [ ] `ruff check .` 干净，`pytest` 全绿
 - [ ] 面板能打开、接口 200，设置保存后重启还在
 - [ ] 停用 → 启用，钩子不重复挂；进程退出没有残留任务
 - [ ] 断网 / 模型挂掉 / 数据库锁住，插件不把主流程拖死
 - [ ] 日志里没有 API key、完整聊天记录
-- [ ] `README` 有用法和截图，`CHANGELOG` 有这一版
+- [ ] `README` 有用法和截图，`CHANGELOG` 有这一版，`LICENSE` 在
 
 ---
 
-## 12. 模板
+## 14. 模板
 
 `plugins/_template/` 是最小可运行骨架（清单、钩子、接口、面板、命令、日志全都有），
 复制改名即可：
@@ -232,3 +289,4 @@ COMMANDS = [Command("mycmd", handler=handle, help="说明", admin=True)]
 Copy-Item -Recurse plugins/_template plugins/my_plugin
 .venv\Scripts\python.exe -m app.pluginkit.check plugins/my_plugin
 ```
+

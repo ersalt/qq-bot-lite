@@ -12,20 +12,19 @@ from pathlib import Path
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 
 from . import __version__
 from .config import CONFIG_PATH, ROOT, Config, load_config
 from .console import ConsoleFormatter, enable_ansi, print_banner, set_title, start_console_watchdog
 from .context.store import MessageStore
 from .core.pipeline import ChatService
-from .pluginkit.registry import ExtensionRegistry
-
 from .llm.client import LLMClient
 from .media.images import ImageLoader
 from .onebot.members import MemberDirectory
 from .onebot.server import OneBotServer
 from .persona import Persona
+from .pluginkit.registry import ExtensionRegistry
 from .reply.sender import ReplySender
 from .web.model_routes import mount_model_api
 from .web.persona_routes import mount_persona_api

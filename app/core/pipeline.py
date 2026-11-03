@@ -5,14 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import AsyncIterator, Callable
 
 from ..config import Config
 from ..context.store import MessageStore
 from ..context.window import build_history, keep_addressed
-from ..pluginkit.registry import ExtensionRegistry, HookContext
 from ..llm.client import LLMClient, LLMError, ThinkingBudgetExceeded
 from ..llm.prompt import build_messages, build_system_prompt, scene_line
 from ..llm.tokens import estimate_text_tokens
@@ -22,6 +21,7 @@ from ..onebot.events import MessageEvent
 from ..onebot.members import MemberDirectory
 from ..onebot.protocol import ImageRef
 from ..persona import Persona
+from ..pluginkit.registry import ExtensionRegistry, HookContext
 from ..reply.segments import Segmenter
 from ..reply.sender import ReplySender, clean_text
 from ..sdk import CommandContext
@@ -378,7 +378,8 @@ class ChatService:
         if result.sent == 0 and not collected and not used_fallback:
             used_fallback = True
             log.warning(
-                "模型只有思考没有正文，改用无思考模式重答 | %s | %s | msg=%s | max_tokens=%d | reasoning_tokens=%s | finish_reason=%s",
+                "模型只有思考没有正文，改用无思考模式重答 | %s | %s | msg=%s | max_tokens=%d | "
+                "reasoning_tokens=%s | finish_reason=%s",
                 self._label(event),
                 event.sender_label,
                 event.message_id or "-",

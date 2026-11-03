@@ -165,8 +165,12 @@ enabled = ["slang"]
 |---|---|
 | 分支 | `main`（只收合并，不直接提交）/ `develop`（日常开发）/ `feature/*`、`fix/*`、`hotfix/*` |
 | 版本来源 | 根目录 `VERSION`，代码通过 `app.__version__` 读取，不重复写死 |
-| 日志 | `CHANGELOG.md` 以上一个正式 tag 为基线，只写用户可感知的变化 |
-| 测试 | `python -m pytest tests -q`（CI 跑 3.12/3.13 × Ubuntu/Windows） |
+| 提交信息 | Conventional Commits：`feat:` / `fix:` / `docs:` / `refactor:` / `chore:` |
+| 日志 | `CHANGELOG.md` 以上一个正式 tag 为基线，只写用户可感知的变化（Keep a Changelog 格式） |
+| 代码风格 | `python -m ruff check .`（E/W/F/B/I，行长 120，见 `ruff.toml`） |
+| 测试 | `python -m pytest tests -q` |
+| 插件 | `python -m app.pluginkit.check plugins`；规范见 [docs/plugin-spec.md](docs/plugin-spec.md) |
+| CI | `.github/workflows/ci.yml`：3.12/3.13 × Ubuntu/Windows 跑 ruff + pytest，另加插件自检 |
 | 发布 | develop 合并到 main（`--no-ff`）→ 打附注 tag `vX.Y.Z` → GitHub Release |
 
 发布流程：

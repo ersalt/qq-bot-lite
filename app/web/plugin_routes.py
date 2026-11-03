@@ -9,8 +9,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..config import Config
-from ..pluginkit.registry import ExtensionRegistry
 from ..pluginkit.manifest import read_manifest
+from ..pluginkit.registry import ExtensionRegistry
 from ..pluginkit.settings_store import defaults_from
 
 log = logging.getLogger(__name__)
@@ -18,9 +18,7 @@ log = logging.getLogger(__name__)
 
 def mount_plugin_routers(app: FastAPI, registry: ExtensionRegistry) -> None:
     """把插件自带的面板挂上去。重复调用只会补挂新增的。"""
-    from fastapi.responses import FileResponse
-
-    from fastapi.responses import RedirectResponse
+    from fastapi.responses import FileResponse, RedirectResponse
 
     mounted: set[str] = getattr(app.state, "plugin_pages", set())
     # 允许不带尾斜杠访问：页面里的相对路径要按 /plugins/<id>/ 解析
@@ -141,9 +139,15 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
             low, high = field.get("min"), field.get("max")
             if kind == "number" and isinstance(clean[key], (int, float)):
                 if low is not None and clean[key] < low:
-                    return JSONResponse({"ok": False, "message": f"{field.get('label', key)} 不能小于 {low}"}, status_code=400)
+                    return JSONResponse(
+                        {"ok": False, "message": f"{field.get('label', key)} 不能小于 {low}"},
+                        status_code=400,
+                    )
                 if high is not None and clean[key] > high:
-                    return JSONResponse({"ok": False, "message": f"{field.get('label', key)} 不能大于 {high}"}, status_code=400)
+                    return JSONResponse(
+                        {"ok": False, "message": f"{field.get('label', key)} 不能大于 {high}"},
+                        status_code=400,
+                    )
 
         merged = registry.update_settings(name, {**defaults, **clean})
         return JSONResponse({"ok": True, "settings": merged, "message": "设置已保存"})

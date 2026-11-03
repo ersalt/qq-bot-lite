@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import importlib.util
 import inspect
-import sys
 import logging
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -18,7 +18,9 @@ from ..onebot.events import MessageEvent
 from . import DATA_DIR, PLUGIN_DIR
 from .manifest import PluginContext, PluginManifest, discover, entry_path, read_manifest
 from .plugin_log import make_plugin_logger
-from .settings_store import defaults_from, load as load_settings, save as save_settings
+from .settings_store import defaults_from
+from .settings_store import load as load_settings
+from .settings_store import save as save_settings
 
 log = logging.getLogger(__name__)
 

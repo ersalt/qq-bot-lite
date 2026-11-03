@@ -56,7 +56,10 @@ def make_fake_llm(state: FakeState) -> FastAPI:
         # 每次都换一句话，避免被“30 秒内相同内容去重”拦掉，让测试聚焦在触发逻辑上。
         text = REPLY_TEXT if len(state.requests) == 1 else f"第{len(state.requests)}次回复。" + REPLY_TEXT
         if not body.get("stream"):
-            return {"choices": [{"message": {"content": text}}], "usage": {"prompt_tokens": 10, "completion_tokens": 20}}
+            return {
+                "choices": [{"message": {"content": text}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+            }
 
         async def gen():
             for index in range(0, len(text), 3):
@@ -575,7 +578,7 @@ async def test_wrong_token_is_rejected(tmp_path: Path) -> None:
     cfg.onebot.access_token = TOKEN
     bot_server = await start_server(build_app(cfg, db_path=tmp_path / "reject.db"), app_port)
     try:
-        from websockets.exceptions import InvalidStatus, ConnectionClosed
+        from websockets.exceptions import ConnectionClosed, InvalidStatus
 
         with pytest.raises((InvalidStatus, ConnectionClosed, OSError)):
             async with connect(f"ws://127.0.0.1:{app_port}/onebot/v11/ws") as ws:

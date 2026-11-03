@@ -7,6 +7,7 @@
 - 接口签名（钩子、命令、面板）：[plugin-api.md](plugin-api.md)
 - 骨架：复制 `plugins/_template/`，改个名就能开工
 - 自检：`.venv\Scripts\python.exe -m app.pluginkit.check plugins/<名字>`
+- 代码风格：`.venv\Scripts\python.exe -m ruff check .`（与主程序同一份 `ruff.toml` 规则）
 
 ```
 plugins/
