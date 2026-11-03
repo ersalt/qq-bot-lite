@@ -211,6 +211,11 @@ body {
   color: var(--foreground);
   cursor: pointer;
   box-shadow: var(--shadow-card);
+  /* 用 <a class="btn"> 时也要像按钮一样居中，否则文字会贴着上边 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
   transition: border-color .15s ease, background .15s ease, transform .06s ease, opacity .15s ease;
 }
 .btn:hover { border-color: color-mix(in oklab, var(--border) 50%, var(--muted-foreground)); }
