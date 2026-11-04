@@ -127,11 +127,14 @@ async function installPlugin(file, button) {
   const label = button.textContent;
   button.textContent = "安装中…";
   try {
-    const response = await fetch("/api/plugins/install", {
-      method: "POST",
-      headers: { "Content-Type": "application/zip" },
-      body: file,
-    });
+    const response = await fetch(
+      `/api/plugins/install?name=${encodeURIComponent(file.name)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/zip" },
+        body: file,
+      },
+    );
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
       toast(data.message || "安装失败", "bad");
@@ -179,7 +182,11 @@ function openInstallDialog() {
   drop.append(picked);
   body.append(drop);
   body.append(
-    el("p", "hint", "结构：<插件id>/plugin.toml + plugin.py。安装后默认不启用，用卡片开关启用。"),
+    el(
+      "p",
+      "hint",
+      "支持 <插件id>/plugin.toml，或 ZIP 根目录直接放 plugin.toml（ZIP 名就是插件 id）。安装后默认不启用，用卡片开关启用。",
+    ),
   );
 
   const picker = document.createElement("input");

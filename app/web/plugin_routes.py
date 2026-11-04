@@ -91,8 +91,8 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
         return JSONResponse({"plugins": registry.list_plugins(), "enabled": list(registry.enabled)})
 
     @app.post("/api/plugins/install")
-    async def install_plugin(request: Request) -> JSONResponse:
-        """手动安装插件 ZIP。只收单个 <id>/plugin.toml 结构，安装后默认不启用。"""
+    async def install_plugin(request: Request, name: str | None = None) -> JSONResponse:
+        """手动安装插件 ZIP。支持 <id>/plugin.toml 或根目录 plugin.toml（name 作 id）。"""
         length = request.headers.get("content-length", "")
         if length.isdigit() and int(length) > MAX_ZIP:
             return JSONResponse(
@@ -100,14 +100,14 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
             )
         data = await request.body()
         try:
-            name = install_zip(data, registry.plugin_dir)
+            plugin_id = install_zip(data, registry.plugin_dir, name_hint=name)
         except InstallError as exc:
             return JSONResponse({"ok": False, "message": str(exc)}, status_code=exc.status)
         registry.scan()
-        manifest = registry.manifests.get(name)
+        manifest = registry.manifests.get(plugin_id)
         if manifest is None:
             return JSONResponse({"ok": False, "message": "安装后没有找到插件清单"}, status_code=500)
-        log.info("插件已安装: %s", name)
+        log.info("插件已安装: %s", plugin_id)
         return JSONResponse(
             {
                 "ok": True,

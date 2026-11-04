@@ -335,6 +335,73 @@ def test_plugin_zip_install(tmp_path: Path) -> None:
         assert again.status_code == 409
 
 
+def test_plugin_zip_root_layout_uses_zip_name(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "plugin.toml": 'title = "根布局"\n',
+            "plugin.py": "def setup(ctx):\n    return None\n",
+            "pages/index.html": "<!doctype html><h1>root</h1>",
+            "README.md": "# 根目录说明\n",
+            "__MACOSX/._plugin": "junk",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install?name=root-pack.zip",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 200, response.text
+        assert (plugin_dir / "root_pack" / "plugin.toml").exists()
+        assert (plugin_dir / "root_pack" / "pages" / "index.html").exists()
+        item = next(p for p in response.json()["plugins"] if p["name"] == "root_pack")
+        assert item["enabled"] is False
+
+
+def test_plugin_zip_root_layout_requires_name(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "plugin.toml": 'title = "没有名字"\n',
+            "plugin.py": "def setup(ctx):\n    return None\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 400
+        assert "ZIP 命名" in response.json()["message"]
+
+
+def test_plugin_zip_rejects_ambiguous_layout(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "plugin.toml": 'title = "根"\n',
+            "inner/plugin.toml": 'title = "里"\n',
+            "inner/plugin.py": "def setup(ctx):\n    return None\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install?name=ambiguous.zip",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 400
+        assert "结构不明确" in response.json()["message"]
+
+
 def test_plugin_zip_rejects_unsafe_paths_and_links(tmp_path: Path) -> None:
     plugin_dir = tmp_path / "plugins"
     plugin_dir.mkdir()

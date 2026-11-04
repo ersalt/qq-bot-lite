@@ -1,18 +1,22 @@
-"""插件 ZIP 安装：只接受单个插件顶层目录，先验后解压，避免 zip slip。"""
+"""插件 ZIP 安装：支持带/不带顶层插件目录两种结构，先验后解压，避免 zip slip。"""
 
 from __future__ import annotations
 
 import io
+import re
 import stat
 import tempfile
 import zipfile
 from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
 
+from . import META_FILE
 from .manifest import read_manifest, valid_name
 
 MAX_ZIP = 8 * 1024 * 1024
 MAX_TOTAL = 64 * 1024 * 1024
 MAX_FILES = 1000
+_JUNK_NAMES = {".DS_Store", "Thumbs.db"}
 
 
 class InstallError(Exception):
@@ -27,13 +31,15 @@ def _check_entry(info: zipfile.ZipInfo, total: int) -> int:
         raise InstallError("ZIP 里有非法文件名")
     if "\\" in name:
         raise InstallError("ZIP 里用了反斜杠路径")
+    if ":" in name:
+        raise InstallError(f"ZIP 里有非法路径：{name}")
     pure = PurePosixPath(name)
+    if not pure.parts:
+        raise InstallError("ZIP 里有空文件名")
     if pure.is_absolute() or any(part in {"..", ""} for part in pure.parts):
         raise InstallError(f"ZIP 里有越界路径：{name}")
     if info.is_dir():
         return total
-    if len(pure.parts) < 2:
-        raise InstallError("ZIP 必须只有一个顶层插件目录（<插件id>/plugin.toml）")
     mode = (info.external_attr >> 16) & 0o170000
     if mode == stat.S_IFLNK:
         raise InstallError(f"ZIP 里有符号链接：{name}")
@@ -45,11 +51,32 @@ def _check_entry(info: zipfile.ZipInfo, total: int) -> int:
     return total
 
 
-def install_zip(data: bytes, plugins_root: Path) -> str:
+def _is_junk(pure: PurePosixPath) -> bool:
+    """macOS/Windows 打包时常见的隐藏垃圾，不该让整个包失败。"""
+    return pure.parts[0] == "__MACOSX" or pure.name in _JUNK_NAMES
+
+
+def _id_from_hint(hint: str | None) -> str | None:
+    """根目录布局没有文件夹名，用 ZIP 文件名/name 参数当插件 id。"""
+    if not hint:
+        return None
+    raw = unquote(hint).strip().replace("\\", "/").rsplit("/", 1)[-1]
+    if raw.lower().endswith(".zip"):
+        raw = raw[:-4]
+    candidate = re.sub(r"[^A-Za-z0-9_]+", "_", raw).strip("_")
+    return candidate if valid_name(candidate) else None
+
+
+def install_zip(data: bytes, plugins_root: Path, name_hint: str | None = None) -> str:
     """校验并安装一个插件 ZIP，返回插件 id。
 
-    只接受 `<id>/plugin.toml` 这一种结构；先完整校验再解压到 plugins_root 下的隐藏临时
-    目录，清单有效后才 rename 成正式目录。解压时按实际写出的字节再卡一次大小。
+    接受两种结构：
+
+    1. `<插件id>/plugin.toml`（所有文件都在同一个顶层目录里）
+    2. `plugin.toml` 直接在 ZIP 根目录（插件 id 取 ZIP 文件名/name 参数）
+
+    先完整校验再解压到 plugins_root 下的隐藏临时目录，清单有效后才 rename 成正式目录。
+    解压时按实际写出的字节再卡一次大小。
     """
     if not data:
         raise InstallError("ZIP 是空的")
@@ -66,17 +93,47 @@ def install_zip(data: bytes, plugins_root: Path) -> str:
             raise InstallError("ZIP 是空的")
         if len(infos) > MAX_FILES:
             raise InstallError(f"ZIP 文件数超过 {MAX_FILES} 上限")
-        roots: set[str] = set()
         total = 0
         for info in infos:
             total = _check_entry(info, total)
-            if not info.is_dir():
-                roots.add(PurePosixPath(info.filename).parts[0])
-        if len(roots) != 1:
-            raise InstallError("ZIP 必须只有一个顶层插件目录")
-        root = roots.pop()
-        if not valid_name(root):
-            raise InstallError(f"插件目录名不合法：{root}")
+
+        files: list[tuple[zipfile.ZipInfo, PurePosixPath]] = []
+        for info in infos:
+            if info.is_dir():
+                continue
+            pure = PurePosixPath(info.filename)
+            if _is_junk(pure):
+                continue
+            files.append((info, pure))
+        if not files:
+            raise InstallError("ZIP 里没有文件")
+
+        paths = [pure for _, pure in files]
+        names = {pure.as_posix() for pure in paths}
+        top_dirs = {pure.parts[0] for pure in paths}
+        folder_meta = [name for name in top_dirs if f"{name}/{META_FILE}" in names]
+        has_root_meta = META_FILE in names
+        has_root_level_files = any(len(pure.parts) == 1 for pure in paths)
+
+        strip_prefix = 0
+        if has_root_meta:
+            if folder_meta:
+                raise InstallError("ZIP 同时有根目录和文件夹里的 plugin.toml，结构不明确")
+            root = _id_from_hint(name_hint)
+            if root is None:
+                raise InstallError(
+                    "根目录布局需要把 ZIP 命名为 <插件id>.zip（或加 ?name=<插件id>）"
+                )
+        elif len(folder_meta) == 1 and len(top_dirs) == 1 and not has_root_level_files:
+            root = folder_meta[0]
+            if not valid_name(root):
+                raise InstallError(f"插件目录名不合法：{root}")
+            strip_prefix = 1
+        elif folder_meta:
+            raise InstallError("ZIP 必须只有一个插件目录，且所有文件都放在里面")
+        else:
+            raise InstallError("ZIP 根目录或顶层文件夹里缺少 plugin.toml")
+
         dest = plugins_root / root
         if dest.exists():
             raise InstallError(f"插件「{root}」已存在，先删除再装", 409)
@@ -85,10 +142,11 @@ def install_zip(data: bytes, plugins_root: Path) -> str:
         with tempfile.TemporaryDirectory(dir=plugins_root, prefix=".install-") as temp:
             temp_path = Path(temp)
             try:
-                for info in infos:
-                    if info.is_dir():
+                for info, pure in files:
+                    relative = PurePosixPath(*pure.parts[strip_prefix:])
+                    if not relative.parts:
                         continue
-                    target = temp_path / PurePosixPath(info.filename)
+                    target = temp_path / root / relative
                     target.parent.mkdir(parents=True, exist_ok=True)
                     written = 0
                     with archive.open(info) as src, target.open("wb") as dst:
