@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import logging
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +22,7 @@ from .plugin_log import make_plugin_logger
 from .settings_store import defaults_from
 from .settings_store import load as load_settings
 from .settings_store import save as save_settings
+from .tools import TOOL_NAME_LIMIT, Tool, ToolEntry
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +64,10 @@ class Extension:
 
     async def after_reply(self, ctx: HookContext, text: str) -> str:
         return text
+
+    def tools(self) -> list[Tool]:
+        """返回这个插件暴露给模型的工具；默认读类属性 TOOLS。"""
+        return list(getattr(self, "TOOLS", []) or [])
 
 
 class ExtensionRegistry:
@@ -320,6 +326,47 @@ class ExtensionRegistry:
 
     def find_command(self, name: str) -> tuple[str, Any] | None:
         return self.commands.get(name)
+
+    def collect_tools(self) -> dict[str, ToolEntry]:
+        """收集所有已加载插件暴露的工具，按工具名去重。"""
+        entries: dict[str, ToolEntry] = {}
+        for extension in self.extensions:
+            ctx = getattr(extension, "ctx", None)
+            if ctx is None:
+                continue
+            try:
+                tools = extension.tools()
+            except Exception:  # noqa: BLE001
+                log.exception("插件 %s tools() 异常", getattr(extension, "name", "?"))
+                continue
+            if not isinstance(tools, (list, tuple)):
+                log.error("插件 %s tools() 必须返回列表", getattr(extension, "name", "?"))
+                continue
+            for tool in tools:
+                if not isinstance(tool, Tool):
+                    log.error("插件 %s 返回了非 Tool 对象: %r", getattr(extension, "name", "?"), tool)
+                    continue
+                name = str(tool.name or "").strip()
+                if not re.fullmatch(rf"[A-Za-z0-9_]{{1,{TOOL_NAME_LIMIT}}}", name):
+                    log.error("插件 %s 工具名不合法: %r", getattr(extension, "name", "?"), tool.name)
+                    continue
+                if not callable(tool.handler) or not isinstance(tool.parameters, dict):
+                    log.error("插件 %s 工具 %s 定义不完整", getattr(extension, "name", "?"), name)
+                    continue
+                if name in entries:
+                    log.error(
+                        "工具名冲突: %s 同时来自插件 %s 和 %s，后一个被忽略",
+                        name,
+                        entries[name].plugin,
+                        getattr(ctx, "name", "?"),
+                    )
+                    continue
+                entries[name] = ToolEntry(
+                    tool=tool,
+                    plugin=getattr(ctx, "name", "") or getattr(extension, "name", ""),
+                    plugin_ctx=ctx,
+                )
+        return entries
 
     def _mark_error(self, name: str, exc: Exception) -> None:
         """记下第一次出错，面板上能看见。"""

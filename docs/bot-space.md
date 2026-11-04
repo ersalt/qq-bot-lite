@@ -2,6 +2,8 @@
 
 > 状态：设计稿，供 `D:\Dev\bot_space` 新工作区接手。
 > 主项目：`D:\Dev\qq-bot-lite`。
+> 2026-11-04：Phase 1 核心工具协议已在主项目落地（`complete_message` / `Tool` /
+> `ToolRunner` / `api=2`）；插件本身尚未实现。
 > 这页先把「为什么做、做成什么样、哪些不能做」写清楚；实现时以这里和
 > `docs/plugin.md` 的接口契约为准，冲突先改文档再改代码。
 

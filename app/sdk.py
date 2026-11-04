@@ -23,6 +23,7 @@ from typing import Any, Awaitable, Callable
 
 from .pluginkit.manifest import SUPPORTED_API, PluginContext
 from .pluginkit.registry import Extension, HookContext
+from .pluginkit.tools import Tool, ToolContext
 
 __all__ = [
     "API_VERSION",
@@ -31,6 +32,8 @@ __all__ = [
     "Extension",
     "HookContext",
     "PluginContext",
+    "Tool",
+    "ToolContext",
 ]
 
 API_VERSION = SUPPORTED_API

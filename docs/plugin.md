@@ -4,7 +4,7 @@
 命令、设置和网页面板。本文既是**接口契约**，也是**写作规范**——两者冲突时，以本文的
 「必须」为准。
 
-当前接口版本：`api = 1`
+当前接口版本：`api = 2`
 
 自检：
 
@@ -82,7 +82,7 @@ version = "0.4.1"                 # SemVer x.y.z
 author = "贰叔"
 repository = "https://github.com/ersalt/whale_lexicon"  # 可选，卡片上显示 GitHub/仓库链接
 
-api = 1                           # 插件接口版本，默认 1；比主程序新的会拒绝加载
+api = 2                           # 插件接口版本，默认 2；比主程序新的会拒绝加载
 entry = "plugin.py"               # 可选，默认 plugin.py
 panel = "/plugins/whale_lexicon"  # 可选，写了才显示「打开面板」
 app_version = ">=0.3"             # 可选；不满足只警告，不拦加载；也可直接写 "0.3"（最低版本）
@@ -138,7 +138,8 @@ class MyPlugin(Extension):
 def setup(ctx: PluginContext) -> MyPlugin:
     return MyPlugin()
 
-COMMANDS = []                         # 可选，见第 6 节
+COMMANDS = []                         # 可选，见第 7 节
+TOOLS = []                            # 可选，model-facing 工具，见 6.1
 router = APIRouter()                  # 可选，挂在 /plugins/<id>/ 下
 ```
 
@@ -237,6 +238,59 @@ async def settings_fields(self, ctx, fields):
 
 **故意给得少**。插件想做别的事，说明那个能力该做成机器人核心功能，而不是每个插件
 自己去摸内部。
+
+### 6.1 工具（model-facing tools，api=2）
+
+命令是给用户输入的；**工具是给模型选的**。插件导出 `TOOLS`（或重写 `tools()`），
+宿主把 schema 交给模型，模型返回 `tool_calls` 后由宿主执行并把结果回填。
+
+```python
+from app.sdk import Extension, Tool, ToolContext
+
+
+async def append_note(ctx: ToolContext, args: dict) -> dict:
+    path = ctx.data_dir / "notes" / args["name"]
+    if path.suffix != ".md":
+        raise ValueError("只允许 .md")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(args["text"], encoding="utf-8")
+    return {"path": str(path)}
+
+
+class Notes(Extension):
+    name = "notes"
+
+    def tools(self):
+        return [
+            Tool(
+                name="notes_append",
+                description="把一段 Markdown 追加到 bot 的笔记里。",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "text": {"type": "string"},
+                    },
+                    "required": ["name", "text"],
+                },
+                handler=append_note,
+            )
+        ]
+```
+
+约定：
+
+- 工具名 `[A-Za-z0-9_]`，全局唯一；冲突时后加载的跳过并记日志。
+- `ToolContext`：`plugin` / `session_key` / `is_group` / `is_admin` / `trigger`
+  （`chat` / `autonomy`）/ `data_dir` / `log`。
+- handler 返回可 JSON 序列化的结果；异常、超时、结果过大都由宿主转成 `ok: false`
+  或截断结果，不打断聊天。
+- 工具对话只在本次请求里；**不写持久历史**，只落最终 assistant 回复。
+- 单轮最多 3 次工具执行，工具超时 10 秒；第一期工具循环只走非流式。
+- 当前内核只在**私聊**把工具交给模型；群聊不暴露。
+- 模型是否调用由模型决定；工具描述要写清「什么时候用」，不要靠 system 拼动态内容。
+- 工具名建议带插件前缀（如 `notes_append`），避免和别的插件撞。
+- `api=2` 起支持；`api=1` 的老插件（只有钩子/命令）继续加载。
 
 ---
 
@@ -382,7 +436,7 @@ ctx.log.info("注入 %s", "黑话 梁文峰")
 
 - `version` 语义化（SemVer）：数据/接口不兼容升 `x`，加功能升 `y`，修 bug 升 `z`。
 - `api` 是插件接口版本，主程序只加载 `api <= 自己支持的最高版本` 的插件；高了就显示成
-  错误卡，写明「需要更新的机器人」。
+  错误卡，写明「需要更新的机器人」。当前最高 `2`；`api=1` 的旧插件继续兼容，不强制升级。
 - 对新主程序的要求写进 `app_version`（如 `">=0.2"`），不满足只警告、不拦加载。
 - **废弃策略**：`api` 升版后旧接口至少保留一个大版本；删之前先在 `CHANGELOG` 标
   「deprecated」，日志里对调用方打一次 warning。

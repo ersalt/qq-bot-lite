@@ -54,15 +54,16 @@ CI 是 3.12/3.13 × Ubuntu/Windows 的矩阵，上面三条 + 插件自检。
 ```
 app/
   core/pipeline.py    消息主链路：判定 → 拼上下文 → 调模型 → 分段发送
-  llm/client.py       LM Studio 客户端（complete / stream）
+  core/tool_runner.py model-facing 工具循环：tool_calls → 执行 → role=tool → 最终正文
+  llm/client.py       LM Studio 客户端（complete / complete_message / stream）
   context/store.py    SQLite 会话库、上下文裁剪
-  pluginkit/          插件运行时：清单、发现、加载、钩子、设置、自检
+  pluginkit/          插件运行时：清单、发现、加载、钩子、工具、设置、自检
   web/                FastAPI 路由 + 静态前端（page.html / app.js / panels.js / plugins.js）
   config.py           dataclass 配置 + TOML 读写（写回保留注释）
 plugins/              插件（只从这里加载；_template 是骨架）
 personas/             人设 Markdown
 docs/                 local-first.md（定位与实测）、plugin.md（插件开发）、log-spec.md（日志格式）、
-                      ui-spec.md（界面契约：令牌/骨架/组件/动效/验收）
+                      ui-spec.md（界面契约）、bot-space.md（bot 私人空间设计交接）
 ```
 
 ## 不能碰的设计
@@ -82,9 +83,11 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
 
 ## 插件模型（细节见 docs/plugin.md）
 
-- 契约版本 `api = 1`：`plugin.toml`（元数据 + `[[config]]` 设置项）+ `plugin.py` 的 `setup(ctx)`。
+- 契约版本 `api = 2`：`plugin.toml`（元数据 + `[[config]]` 设置项）+ `plugin.py` 的 `setup(ctx)`。
 - 钩子：`on_message` / `user_suffix` / `system_prompt` / `after_reply` / `settings_fields`，另有
   `on_start` / `on_stop` 生命周期。钩子在消息主链路上，必须快进快出（5ms 量级）。
+- 工具：插件导出 `TOOLS`（或重写 `tools()`），宿主把 schema 交给模型，`ToolRunner` 执行
+  `tool_calls` 并回填 `role=tool`；工具对话不落持久历史。`api=1` 老插件继续兼容。
 - `ctx` 提供 `settings` / `data_dir` / `services`（llm, store, service, cfg）/ `spawn` / `log`。
 - 异常隔离：任一钩子抛异常只记 `last_error`，不影响聊天。
 - 面板可看 README、热重载、删除（可选连 `data/plugin_data/<id>/` 一起）、安装 ZIP
@@ -109,6 +112,9 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
   会把原生控件边框抹掉。`uiSelect` 在弹窗内会把浮层挂到 `dialog` 上，避免被 `overflow` 裁切。
 - **通知统一走 `toast()`**：主面板顶部 `.toast-stack`，弹窗打开时自动挂到该 `dialog` 里；不要再写
   底部 `.toast`（旧样式只留给插件页）。新建重名这类表单错误同时给行内 `.err`，不能只靠通知。
+- **工具和命令是两套东西**：`COMMANDS` 是用户输入 `/xxx`；`TOOLS` 是模型自己调用的工具。
+  工具对话只在本次请求里，**不落持久历史**；当前只在私聊把工具交给模型，群聊不暴露。
+  工具执行必须走 `ToolRunner`，不要绕过 `_llm_slot` 直接并发调模型。
 - `python -m app.pluginkit.check` 在 GBK 控制台会因 `✓` 编码报错：先
   `$env:PYTHONIOENCODING = "utf-8"` 再跑（不是代码问题）。
 - **移动目录 / 重启前先停进程**，否则 `.venv`、`data/*.db` 被占用。
@@ -137,6 +143,6 @@ D:\Dev\
 
 - `v0.2.0` 已发布：https://github.com/ersalt/qq-bot-lite/releases/tag/v0.2.0
 - 面板已按 `docs/ui-spec.md` 重排：顶栏 + 页头 + 页内页签 + 白卡行式，动效见规范第 7 节。
-- 文档四份：local-first / plugin / log-spec / ui-spec。
+- 文档五份：local-first / plugin / log-spec / ui-spec / bot-space。
 - 本机运行时：机器人在跑，LM Studio 加载 `qwen3.8-27b`（32768 ctx），SnowLuma 反连 8790。
 - 插件部署模型：源码 `D:\Dev\whale_lexicon` → `tools/deploy-to-bot.ps1` → `plugins/whale_lexicon`。

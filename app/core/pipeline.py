@@ -22,9 +22,11 @@ from ..onebot.members import MemberDirectory
 from ..onebot.protocol import ImageRef
 from ..persona import Persona
 from ..pluginkit.registry import ExtensionRegistry, HookContext
+from ..pluginkit.tools import ToolContext, ToolEntry
 from ..reply.segments import Segmenter
 from ..reply.sender import ReplySender, clean_text
 from ..sdk import CommandContext
+from .tool_runner import ToolRunner
 from .trigger import Decision, decide
 
 log = logging.getLogger(__name__)
@@ -101,6 +103,7 @@ class ChatService:
         self._group_names: dict[int, tuple[str, float]] = {}
         self._anchors: dict[str, int] = {}
         self._llm_slot = asyncio.Semaphore(max(cfg.llm.max_concurrency, 1))
+        self.tool_runner = ToolRunner(llm)
 
     # ---------- 入口 ----------
 
@@ -355,13 +358,22 @@ class ChatService:
         extra = await self.extensions.collect_system_prompt(ctx)
         system_prompt = build_system_prompt(self.cfg, self.persona.text, extra_sections=extra)
         messages = build_messages(system_prompt, history, content, self.cfg.context.merge_same_role)
+        tools = self._tools_for(event)
+        tool_context = ToolContext(
+            plugin="",
+            session_key=event.session_key,
+            is_group=event.is_group,
+            is_admin=str(event.user_id) in self.cfg.commands.admins,
+            trigger="chat",
+        )
 
         log.debug(
-            "生成回复 session=%s reason=%s 历史=%d条 system=%d字",
+            "生成回复 session=%s reason=%s 历史=%d条 system=%d字 工具=%d",
             event.session_key,
             decision.reason,
             len(history),
             len(system_prompt),
+            len(tools),
         )
 
         collected: list[str] = []
@@ -376,7 +388,7 @@ class ChatService:
                 return await self.sender.deliver(
                     conn,
                     event,
-                    self._pieces(messages, ctx, collected, timing, override),
+                    self._pieces(messages, ctx, collected, timing, override, tools, tool_context),
                     on_sent=_record_sent,
                 )
 
@@ -471,7 +483,45 @@ class ChatService:
         collected: list[str],
         timing: _Timing,
         override: dict | None = None,
+        tools: dict[str, ToolEntry] | None = None,
+        tool_context: ToolContext | None = None,
     ) -> AsyncIterator[str]:
+        if tools and tool_context is not None:
+            # 工具循环必须先拿到最终正文，不能边流边执行 tool_calls；第一期只走非流式。
+            run = await self.tool_runner.run(
+                messages,
+                tools,
+                tool_context,
+                override=override,
+            )
+            text = run.text.strip()
+            if not text:
+                return
+            timing.mark_first()
+            if run.calls:
+                log.info(
+                    "工具循环 session=%s 轮=%d 调用=%d 正文=%d字",
+                    ctx.session_key,
+                    run.rounds,
+                    run.calls,
+                    len(text),
+                )
+            if not self.cfg.reply.segments:
+                out = await self.extensions.after_reply(ctx, text)
+                collected.append(out)
+                yield out
+                return
+            segmenter = Segmenter(self.cfg.reply.segment_max_chars, self.cfg.reply.max_segments)
+            for piece in segmenter.feed(text):
+                out = await self.extensions.after_reply(ctx, piece)
+                collected.append(out)
+                yield out
+            for piece in segmenter.flush():
+                out = await self.extensions.after_reply(ctx, piece)
+                collected.append(out)
+                yield out
+            return
+
         if not self.cfg.reply.segments:
             text = await self._complete(messages, override)
             if text.strip():
@@ -519,6 +569,12 @@ class ChatService:
 
     async def _complete(self, messages: list[dict], override: dict | None = None) -> str:
         return await self.llm.complete(messages, override=override)
+
+    def _tools_for(self, event: MessageEvent) -> dict[str, ToolEntry]:
+        """工具只在私聊暴露；群聊永远不给空间工具。"""
+        if event.is_group:
+            return {}
+        return self.extensions.collect_tools()
 
     # ---------- 杂项 ----------
 
