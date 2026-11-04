@@ -95,6 +95,8 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
   最新对话就进不了窗口，模型会“三句就忘”。回归测试见 `tests/test_context_window.py`。
 - **历史配对必须用 `assistant.reply_to`**：不要用“紧挨着 assistant 的 user”，群里插话
   会把回复算到别人头上；老数据没有 reply_to 时才退回相邻逻辑。见 `app/context/window.py`。
+- **群聊闲话不塞持久历史**：用 `_ambient_context` 取“上次 assistant 之后”的消息，作为
+  `<system_reminder>` 注入当前 user 内容；持久历史只留 reply_to 配对的问答。
 - **`body` 不能设 `overflow-x: hidden`**：它会变成没有滚动范围的滚动容器，滚轮被吃掉，
   整页滚不动（进阶设置展开后最明显）。`html`/`body` 一律 `overflow-x: clip`。
 - `python -m app.pluginkit.check` 在 GBK 控制台会因 `✓` 编码报错：先

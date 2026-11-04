@@ -34,12 +34,11 @@ def _render(
 
 
 def keep_addressed(messages: list[StoredMessage]) -> list[StoredMessage]:
-    """只留“它接过的轮次”，外加最后一段还没回应的群聊。
+    """只留“它接过的轮次”，群里的闲话交给 build_ambient。
 
-    AstrBot 的历史就是这么攒的：只有被它接了的话才进对话历史，群里的闲话不进
-    （它以一条一次性的转录块补上，注入完就删）。我们原来是全员闲聊全塞进去，
-    模型每轮都要先把几十条跟它无关的话读一遍再判断谁在说什么 —— 实测思考量
-    会从 100 上下涨到 267~514，正好是那 4~6 秒的来源。
+    AstrBot 的历史就是这么攒的：只有被它接了的话才进持久对话历史，群里的闲话
+    作为一次性的 ambient 块注入当前消息（注入完就清）。我们以前把尾部群聊也塞进
+    历史，模型会把闲话当成连续对话，还容易把回复算到别人头上。
 
     assistant 消息现在带 reply_to（触发它的 user 消息 id）。按 id 配对，
     而不是“紧挨着 assistant 的那条 user”：群里有人插话时，紧挨着的很可能是
@@ -57,15 +56,47 @@ def keep_addressed(messages: list[StoredMessage]) -> list[StoredMessage]:
         # 老数据没有 reply_to，只能退化成“紧挨着的那条 user”
         if index > 0 and messages[index - 1].role == "user":
             kept_ids.add(messages[index - 1].id)
-
-    # 末尾那段还没被回应的群聊保留，否则模型不知道“刚才聊到哪了”。
-    # 这一段是它这次要接的上下文，和 AstrBot 的 backlog 块等价。
-    if messages and messages[-1].role != "assistant":
-        start = len(messages) - 1
-        while start > 0 and messages[start - 1].role != "assistant":
-            start -= 1
-        kept_ids.update(message.id for message in messages[start:])
     return [message for message in messages if message.id in kept_ids]
+
+
+AMBIENT_TOKEN_BUDGET = 800
+
+
+def build_ambient(
+    messages: list[StoredMessage], *, budget: int = AMBIENT_TOKEN_BUDGET
+) -> str:
+    """把上次回复之后的群聊拼成一次性 <system_reminder> 块。
+
+    这不是持久历史：调用方只把它注入当前 user 消息，不写回 store。下一条 assistant
+    落库后，起点自然前移，旧块就没了。
+    """
+    lines: list[str] = []
+    used = 0
+    for message in reversed(messages):
+        if message.role != "user":
+            continue
+        rendered = _render(message, True, True)
+        if not rendered:
+            if not message.has_image:
+                continue
+            speaker = message.speaker or (str(message.user_id) if message.user_id else "某人")
+            rendered = f"[{_stamp(message)}] 「{speaker}」: [图片]"
+        elif message.has_image and "[图片]" not in rendered:
+            rendered += " [图片]"
+        cost = estimate_text_tokens(rendered) + 2
+        if lines and used + cost > budget:
+            break
+        lines.append(rendered)
+        used += cost
+    if not lines:
+        return ""
+    lines.reverse()
+    return (
+        "<system_reminder>\n"
+        "你上次回复之后，群里的聊天记录（只是背景，不要逐条回应）：\n"
+        + "\n".join(lines)
+        + "\n--- END CONTEXT ---\n</system_reminder>"
+    )
 
 
 def pick_anchor_window(

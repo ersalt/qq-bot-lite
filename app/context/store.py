@@ -212,6 +212,15 @@ class MessageStore:
                 row = self._conn.execute("SELECT COUNT(*) AS n FROM messages WHERE session=?", (session,)).fetchone()
         return int(row["n"])
 
+    def last_role_id(self, session: str, role: str = "assistant") -> int:
+        """该会话最后一条指定角色的消息 id；没有返回 0。用于圈 ambient 起点。"""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id FROM messages WHERE session=? AND role=? ORDER BY id DESC LIMIT 1",
+                (session, role),
+            ).fetchone()
+        return int(row["id"]) if row else 0
+
     def stats(self) -> dict[str, int]:
         with self._lock:
             total = self._conn.execute("SELECT COUNT(*) AS n FROM messages").fetchone()["n"]

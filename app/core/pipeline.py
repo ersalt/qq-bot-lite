@@ -11,7 +11,7 @@ from typing import AsyncIterator, Callable
 
 from ..config import Config
 from ..context.store import MessageStore
-from ..context.window import build_history, keep_addressed, pick_anchor_window
+from ..context.window import build_ambient, build_history, keep_addressed, pick_anchor_window
 from ..llm.client import LLMClient, LLMError, ThinkingBudgetExceeded
 from ..llm.prompt import build_messages, build_system_prompt, scene_line
 from ..llm.tokens import estimate_text_tokens
@@ -177,6 +177,7 @@ class ChatService:
 
         # 历史要在当前消息落库前取，避免把“当前这条”重复送进模型。
         history = self._history_window(session)
+        ambient = self._ambient_context(session) if event.is_group else ""
         # 图只在真要回这条消息时才下载解析。群里绝大部分图跟它无关，
         # 之前的写法是每张都下、每张都解码，日志里一片“图片 N 张”白干活。
         prepared = await self.images.prepare(event.content.images) if decision.should else []
@@ -211,7 +212,16 @@ class ChatService:
             return
 
         async with self._lock_for(session):
-            await self._reply(conn, event, history, ctx, decision, prepared, user_row_id)
+            await self._reply(
+                conn,
+                event,
+                history,
+                ctx,
+                decision,
+                prepared=prepared,
+                trigger_id=user_row_id,
+                ambient=ambient,
+            )
 
     # ---------- 命令 ----------
 
@@ -294,6 +304,7 @@ class ChatService:
         decision: Decision,
         prepared: list | None = None,
         trigger_id: int | None = None,
+        ambient: str = "",
     ) -> None:
         timing = _Timing()
         budget = self.cfg.context.max_tokens
@@ -307,7 +318,12 @@ class ChatService:
         history = self._attach_history_images(history)
         ctx.history = history
 
-        text = _prompt_text(event, quoted=decision.reason == "quote", cfg=self.cfg)
+        text = _prompt_text(
+            event,
+            quoted=decision.reason == "quote",
+            cfg=self.cfg,
+            ambient=ambient,
+        )
         suffix = await self.extensions.collect_user_suffix(ctx)
         if suffix:
             text = f"{text}\n\n{suffix}" if text else suffix
@@ -611,6 +627,12 @@ class ChatService:
             log.debug("推进上下文锚点 session=%s 保留 %d 条", session, len(messages))
         return messages
 
+    def _ambient_context(self, session: str) -> str:
+        """上次回复之后的群聊，一次性注入当前消息；不进入持久历史。"""
+        last = self.store.last_role_id(session, "assistant")
+        messages = self.store.latest_after(session, last, 200)
+        return build_ambient(messages)
+
     async def _quoted_images(self, conn: OneBotConnection, reply_id: str) -> list:
         """用 get_msg 把被引用那条消息里的图捞出来。拿不到就返回空。"""
         try:
@@ -696,7 +718,13 @@ def _reasoning_tokens(llm: LLMClient) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | None = None) -> str:
+def _prompt_text(
+    event: MessageEvent,
+    *,
+    quoted: bool = False,
+    cfg: Config | None = None,
+    ambient: str = "",
+) -> str:
     """当前这条 user 消息：场景行 + 正文。
 
     场景信息（时间/群/说话人）必须放在这里而不是 system——放 system 里每句都变，
@@ -728,6 +756,8 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
                 self_name=event.self_name,
             )
         )
+    if ambient:
+        lines.append(ambient)
     if quoted:
         lines.append("（他引用了你之前说的话）")
     if text:

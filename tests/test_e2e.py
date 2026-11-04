@@ -204,7 +204,16 @@ async def test_reply_links_to_trigger_and_history_shows_addressee(tmp_path: Path
         ) as ws:
             await ws.send(json.dumps(group_event(3001, "第一句")))
             await collect_actions(ws)
-            await ws.send(json.dumps(group_event(3002, "第二句")))
+
+            # 两个用户之间插一句闲话，再 @ 它；这句应该进 ambient，而不是持久历史
+            chatter = group_event(3002, "插话")
+            chatter["user_id"] = 999999
+            chatter["sender"] = {"user_id": 999999, "nickname": "路人", "card": "路人"}
+            chatter["message"] = [{"type": "text", "data": {"text": "插话"}}]
+            await ws.send(json.dumps(chatter))
+            await asyncio.sleep(0.3)
+
+            await ws.send(json.dumps(group_event(3003, "第二句")))
             await collect_actions(ws)
     finally:
         bot_server.should_exit = True
@@ -213,6 +222,8 @@ async def test_reply_links_to_trigger_and_history_shows_addressee(tmp_path: Path
 
     sent = json.dumps(state.requests[1]["messages"], ensure_ascii=False)
     assert "（回 「阿伟」）" in sent
+    assert "<system_reminder>" in sent
+    assert "「路人」: 插话" in sent
 
     store = MessageStore(db_path)
     try:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from app.config import ContextConfig
 from app.context.store import MessageStore, StoredMessage
-from app.context.window import build_history, keep_addressed, pick_anchor_window
+from app.context.window import build_ambient, build_history, keep_addressed, pick_anchor_window
 
 
 def _store(tmp_path) -> MessageStore:
@@ -18,6 +18,7 @@ def _msg(
     *,
     speaker: str | None = None,
     reply_to: int | None = None,
+    has_image: bool = False,
 ) -> StoredMessage:
     return StoredMessage(
         id=mid,
@@ -26,7 +27,7 @@ def _msg(
         speaker=speaker or ("alice" if role == "user" else "bot"),
         user_id=1,
         content=content,
-        has_image=False,
+        has_image=has_image,
         created_at=0.0,
         reply_to=reply_to,
     )
@@ -64,17 +65,18 @@ def test_anchor_window_keeps_the_latest_turn(tmp_path):
         assert anchor is not None
         assert window[0].id > 0
 
-        # 锚点推进后，下一轮仍然能看到最新消息，而不是停在旧窗口
-        store.add("group:1", "user", "latest")
+        # 锚点推进后，下一轮仍然能看到最新的一轮，而不是停在旧窗口
+        user_id = store.add("group:1", "user", "latest")
+        store.add("group:1", "assistant", "latest answer", reply_to=user_id)
         messages = store.latest_after("group:1", anchor, 512)
         addressed = keep_addressed(messages)
         window, _ = pick_anchor_window(addressed, 40)
-        assert window[-1].content == "latest"
+        assert window[-1].content == "latest answer"
     finally:
         store.close()
 
 
-def test_keep_addressed_drops_chatter_and_keeps_backlog():
+def test_keep_addressed_drops_chatter_and_trailing_backlog():
     messages = [
         _msg(1, "user", "闲话一"),
         _msg(2, "user", "问它"),
@@ -83,7 +85,31 @@ def test_keep_addressed_drops_chatter_and_keeps_backlog():
         _msg(5, "user", "闲话三"),
     ]
     kept = keep_addressed(messages)
-    assert [item.content for item in kept] == ["问它", "回答", "闲话二", "闲话三"]
+    assert [item.content for item in kept] == ["问它", "回答"]
+
+
+def test_build_ambient_formats_chatter_after_last_reply():
+    messages = [
+        _msg(1, "user", "插话", speaker="bob"),
+        _msg(2, "user", "踢你屁股", speaker="alice"),
+    ]
+    block = build_ambient(messages)
+    assert block.startswith("<system_reminder>")
+    assert "「bob」: 插话" in block
+    assert "「alice」: 踢你屁股" in block
+    assert block.endswith("</system_reminder>")
+    assert "--- END CONTEXT ---" in block
+
+
+def test_build_ambient_marks_images():
+    block = build_ambient([_msg(1, "user", "", speaker="bob", has_image=True)])
+    assert "「bob」: [图片]" in block
+
+
+def test_build_ambient_skips_empty_and_assistant():
+    assert build_ambient([]) == ""
+    assert build_ambient([_msg(1, "user", "", speaker="bob")]) == ""
+    assert build_ambient([_msg(1, "assistant", "不该在这里")]) == ""
 
 
 def test_build_history_respects_bot_reply_switch():
