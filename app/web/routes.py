@@ -57,7 +57,7 @@ def mount_web(
             name = match.group(1)
             path = STATIC / name
             try:
-                version = int(path.stat().st_mtime)
+                version = int(path.stat().st_mtime_ns)
             except OSError:
                 version = 0
             return f"/static/{name}?v={version}"
