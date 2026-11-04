@@ -6,6 +6,7 @@ Pillow>=11.0,<13.0
 # 插件 README 的 Markdown 渲染与白名单清洗（本地执行，不请求外部图片）
 markdown>=3.7,<4.0
 nh3>=0.2,<1.0
+packaging>=24,<28
 
 # 开发/自测
 pytest>=8.0

@@ -174,6 +174,8 @@ class ExtensionRegistry:
             log.error("插件 %s 无法加载: %s", name, manifest.error)
             self.errors[name] = manifest.error
             return
+        if manifest.warning:
+            log.warning("插件 %s: %s", name, manifest.warning)
         path = entry_path(root, name, manifest.entry)
         try:
             # 让入口所在目录变成包的搜索路径，插件就能 from .core import xxx

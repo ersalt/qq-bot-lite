@@ -85,7 +85,7 @@ repository = "https://github.com/ersalt/whale_lexicon"  # 可选，卡片上显�
 api = 1                           # 插件接口版本，默认 1；比主程序新的会拒绝加载
 entry = "plugin.py"               # 可选，默认 plugin.py
 panel = "/plugins/whale_lexicon"  # 可选，写了才显示「打开面板」
-app_version = ">=0.2"             # 可选，预留给兼容检查；当前只读取，不拦加载
+app_version = ">=0.3"             # 可选；不满足只警告，不拦加载；也可直接写 "0.3"（最低版本）
 
 [[config]]                        # 可选，有值才显示「设置」
 key = "enabled"                   # 存进 data/plugin_data/<id>/settings.toml 的键
@@ -115,6 +115,10 @@ labels = ["自动识别", "保持思考", "自定义"]
 
 **元数据与代码分开是硬要求**：列插件列表时绝不执行插件代码。写坏的插件只能显示成
 一张带错误的卡，不能把整个列表拖垮。
+
+`app_version` 是给插件声明“适配哪些 qq-bot-lite 版本”的，和插件自己的 `version` 不是一回事。
+主程序会拿它和当前版本比较，不满足只在卡片上显示黄色提示、日志记一条警告，**不拦加载**；
+真正拦加载的是 `api`（接口契约版本）。
 
 字段不够用时实现 `settings_fields(ctx, fields)` 在运行时改写（见第 5 节）。
 

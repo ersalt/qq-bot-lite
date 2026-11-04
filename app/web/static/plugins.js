@@ -53,6 +53,7 @@ function pluginCard(plugin) {
   card.append(top);
 
   card.append(el("p", "plugin-desc", plugin.error || plugin.description || "没有写说明。"));
+  if (plugin.warning) card.append(el("p", "plugin-warn", plugin.warning));
   if (plugin.last_error) card.append(el("p", "plugin-hint", plugin.last_error));
 
   const actions = el("div", "plugin-actions");

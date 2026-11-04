@@ -504,6 +504,32 @@ def test_plugin_zip_rejects_unsafe_paths_and_links(tmp_path: Path) -> None:
         assert missing.status_code == 400
 
 
+def test_plugin_app_version_warning(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    for name, app_version in (
+        ("oldver", ">=999"),
+        ("okver", ">=0.0"),
+        ("barever", "0.0"),
+        ("badver", "banana"),
+    ):
+        folder = plugin_dir / name
+        folder.mkdir()
+        (folder / "plugin.toml").write_text(
+            f'title = "{name}"\napp_version = "{app_version}"\n', encoding="utf-8"
+        )
+        (folder / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        items = {item["name"]: item for item in client.get("/api/plugins").json()["plugins"]}
+    assert items["oldver"]["error"] is None
+    assert "要求 qq-bot-lite >=999" in items["oldver"]["warning"]
+    assert items["okver"]["warning"] == ""
+    assert items["barever"]["warning"] == ""
+    assert "写法不合法" in items["badver"]["warning"]
+
+
 def test_plugin_reload_unknown(tmp_path: Path) -> None:
     (tmp_path / "plugins").mkdir()
     client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
