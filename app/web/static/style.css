@@ -718,6 +718,9 @@ details.card .card-pad { padding-top: 4px; }
   background: oklch(0% 0 0/.35);
   animation: fade-in var(--dur-2) var(--ease-out-quart);
 }
+
+/* README 是 Markdown 原文，窄了没法读；单独放宽 */
+.dialog.readme { width: min(880px, calc(100vw - 48px)); }
 .dialog-panel { display: flex; flex-direction: column; min-height: 0; max-height: 86vh; }
 .dialog-panel > header { padding: 16px 20px 10px; }
 .dialog-panel > header h2 { margin: 0; font-size: 15px; font-weight: 600; }
@@ -794,11 +797,54 @@ details.card .card-pad { padding-top: 4px; }
 }
 .delete-confirm input { accent-color: var(--danger); }
 
+/* ZIP 安装：拖放区 */
+.dropzone {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 32px 20px;
+  border: 1.5px dashed var(--input);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--canvas) 55%, var(--card));
+  color: var(--muted);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--dur-2) var(--ease-out-quart),
+              background-color var(--dur-2) var(--ease-out-quart),
+              color var(--dur-2) var(--ease-out-quart);
+}
+.dropzone:hover,
+.dropzone.dragover {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+}
+.dropzone.has-file { border-style: solid; border-color: color-mix(in oklab, var(--primary) 45%, var(--border)); }
+.drop-kicker {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: .12em;
+  color: var(--muted);
+}
+.dropzone strong { font-size: 14px; font-weight: 500; color: var(--text); }
+.dropzone:hover strong,
+.dropzone.dragover strong { color: var(--primary-ink); }
+.dropzone small { font-size: 11.5px; }
+.drop-file {
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--primary-ink);
+  word-break: break-all;
+}
+
 .readme-body {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.7;
+  font-size: 12.5px;
+  line-height: 1.75;
   color: var(--muted);
   white-space: pre-wrap;
   word-break: break-word;

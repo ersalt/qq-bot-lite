@@ -46,17 +46,16 @@ function pluginCard(plugin) {
   if (plugin.last_error) card.append(el("p", "plugin-hint", plugin.last_error));
 
   const actions = el("div", "plugin-actions");
-  const docs = uiButton("文档", { variant: "outline", size: "sm" });
-  docs.type = "button";
-  docs.addEventListener("click", () => openReadmeDialog(plugin));
-  actions.append(docs);
-
   if (plugin.config?.length) {
     const settings = uiButton("设置", { variant: "outline", size: "sm" });
     settings.type = "button";
     settings.addEventListener("click", () => openPluginDialog(plugin));
     actions.append(settings);
   }
+  const docs = uiButton("文档", { variant: "outline", size: "sm" });
+  docs.type = "button";
+  docs.addEventListener("click", () => openReadmeDialog(plugin));
+  actions.append(docs);
   if (plugin.panel) {
     const link = uiButton("打开面板", { variant: "outline", size: "sm", href: "#" });
     link.href = plugin.panel;
@@ -92,20 +91,12 @@ function pluginsPanel() {
   const install = uiButton("安装 ZIP", { variant: "outline", size: "sm" });
   install.type = "button";
   install.title = "ZIP 里必须是 <插件id>/plugin.toml";
-  const picker = document.createElement("input");
-  picker.type = "file";
-  picker.accept = ".zip,application/zip";
-  picker.hidden = true;
-  install.addEventListener("click", () => picker.click());
-  picker.addEventListener("change", () => {
-    const file = picker.files?.[0];
-    if (file) installPlugin(file, install, picker);
-  });
+  install.addEventListener("click", () => openInstallDialog());
 
   const refresh = uiButton("刷新", { variant: "outline", size: "sm" });
   refresh.type = "button";
   refresh.addEventListener("click", () => loadPlugins(true));
-  tools.append(install, refresh, picker);
+  tools.append(install, refresh);
   bar.append(info, tools);
   wrap.append(bar);
 
@@ -117,17 +108,21 @@ function pluginsPanel() {
   return wrap;
 }
 
-async function installPlugin(file, button, picker) {
+function isZipFile(file) {
+  if (!file) return false;
   if (!file.name.toLowerCase().endsWith(".zip")) {
     toast("只支持 .zip 文件", "bad");
-    picker.value = "";
-    return;
+    return false;
   }
   if (file.size > 8 * 1024 * 1024) {
     toast("ZIP 不能超过 8MB", "bad");
-    picker.value = "";
-    return;
+    return false;
   }
+  return true;
+}
+
+async function installPlugin(file, button) {
+  if (!isZipFile(file)) return false;
   button.disabled = true;
   const label = button.textContent;
   button.textContent = "安装中…";
@@ -140,18 +135,109 @@ async function installPlugin(file, button, picker) {
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) {
       toast(data.message || "安装失败", "bad");
-      return;
+      return false;
     }
     PLUGINS.items = data.plugins || [];
     paintPlugins(PLUGINS.items);
     toast(data.message || "已安装，记得在卡片上启用");
+    return true;
   } catch (error) {
     toast(`安装失败：${error.message}`, "bad");
+    return false;
   } finally {
     button.disabled = false;
     button.textContent = label;
-    picker.value = "";
   }
+}
+
+function openInstallDialog() {
+  closeDialog();
+  const panel = document.createElement("dialog");
+  panel.id = "dialog";
+  panel.className = "dialog install";
+  panel.addEventListener("click", (event) => {
+    if (event.target === panel) closeDialog();
+  });
+
+  const box = el("div", "dialog-panel");
+  const head = document.createElement("header");
+  const titleRow = el("div", "dialog-title-row");
+  titleRow.append(el("h2", null, "安装插件 ZIP"));
+  const close = uiButton("×", { variant: "ghost", size: "icon" });
+  close.setAttribute("aria-label", "关闭");
+  close.addEventListener("click", closeDialog);
+  titleRow.append(close);
+  head.append(titleRow);
+  head.append(el("p", null, "压缩包里只能有一个顶层插件目录"));
+  box.append(head);
+
+  const body = document.createElement("section");
+  const drop = document.createElement("button");
+  drop.type = "button";
+  drop.className = "dropzone";
+  drop.append(el("span", "drop-kicker", "插件包"));
+  drop.append(el("strong", null, "把 ZIP 拖到这里"));
+  drop.append(el("small", null, "或点击选择文件 · 最大 8MB"));
+  const picked = el("span", "drop-file");
+  picked.hidden = true;
+  drop.append(picked);
+  body.append(drop);
+  body.append(
+    el("p", "hint", "结构：<插件id>/plugin.toml + plugin.py。安装后默认不启用，用卡片开关启用。"),
+  );
+
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = ".zip,application/zip";
+  picker.hidden = true;
+  body.append(picker);
+  box.append(body);
+
+  const foot = document.createElement("footer");
+  const cancel = uiButton("取消", { variant: "outline" });
+  cancel.type = "button";
+  cancel.addEventListener("click", closeDialog);
+  const submit = uiButton("安装");
+  submit.type = "button";
+  submit.disabled = true;
+  foot.append(cancel, submit);
+  box.append(foot);
+
+  let selected = null;
+  const choose = (file) => {
+    if (!isZipFile(file)) return;
+    selected = file;
+    picked.textContent = `${file.name} · ${(file.size / 1048576).toFixed(2)} MB`;
+    picked.hidden = false;
+    drop.classList.add("has-file");
+    submit.disabled = false;
+    picker.value = "";
+  };
+
+  drop.addEventListener("click", () => picker.click());
+  picker.addEventListener("change", () => choose(picker.files?.[0]));
+  drop.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    drop.classList.add("dragover");
+  });
+  drop.addEventListener("dragleave", () => drop.classList.remove("dragover"));
+  drop.addEventListener("drop", (event) => {
+    event.preventDefault();
+    drop.classList.remove("dragover");
+    choose(event.dataTransfer?.files?.[0]);
+  });
+
+  submit.addEventListener("click", async () => {
+    if (!selected) return;
+    const ok = await installPlugin(selected, submit);
+    if (ok) closeDialog();
+  });
+
+  panel.append(box);
+  document.body.append(panel);
+  panel.tabIndex = -1;
+  panel.showModal();
+  drop.focus();
 }
 
 async function loadPlugins(force = false) {
