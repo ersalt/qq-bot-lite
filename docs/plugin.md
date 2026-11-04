@@ -276,7 +276,7 @@ COMMANDS = [Command("mycmd", handler=handle, help="说明", admin=True)]
 `class="btn"` + `data-variant="outline|ghost|destructive"` + `data-size="sm|icon"`，
 输入框 `class="input"`、下拉 `class="select"`、文本域 `class="textarea"`、
 开关用 `<input type="checkbox" role="switch" class="input">`，弹窗用原生
-`<dialog class="dialog">`。主题跟着 `data-theme` 走。
+`<dialog class="modal">`。主题跟着 `data-theme` 走。
 
 这些是主程序的静态资源，跨大版本可能调整；插件要绝对独立就自己写样式。
 面板里想直接跳去自己的设置：链 `/?plugin=<id>#plugins`，会打开那个插件的设置弹窗。

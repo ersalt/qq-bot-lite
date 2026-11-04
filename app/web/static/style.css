@@ -702,9 +702,13 @@ details.card .card-pad { padding-top: 4px; }
 
 /* ---------- 弹窗 ---------- */
 
-.dialog {
+/* 不要用 .dialog：Basecoat 自带同名组件，会把子元素套成
+   position:fixed / max-width:28rem，面板会被压到 448px。用 .modal 走自己的样式。 */
+.modal {
   width: min(560px, calc(100vw - 32px));
   max-width: none;
+  margin: auto;
+  inset: 0;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -713,23 +717,23 @@ details.card .card-pad { padding-top: 4px; }
   box-shadow: var(--shadow-pop);
   overflow: hidden;
 }
-.dialog[open] { animation: dialog-in var(--dur-3) var(--ease-spring-soft); }
-.dialog::backdrop {
+.modal[open] { animation: dialog-in var(--dur-3) var(--ease-spring-soft); }
+.modal::backdrop {
   background: oklch(0% 0 0/.35);
   animation: fade-in var(--dur-2) var(--ease-out-quart);
 }
 
 /* README 是 Markdown 原文，单独放宽；比设置弹窗明显大一圈 */
-.dialog.readme { width: min(1080px, calc(100vw - 16px)); }
+.modal.readme { width: min(1080px, calc(100vw - 16px)); }
 @media (max-width: 720px) {
-  .dialog.readme {
+  .modal.readme {
     width: 100vw;
     max-width: 100vw;
     height: 100dvh;
     max-height: 100dvh;
     border-radius: 0;
   }
-  .dialog.readme .dialog-panel { height: 100%; max-height: none; }
+  .modal.readme .dialog-panel { height: 100%; max-height: none; }
 }
 .dialog-panel { display: flex; flex-direction: column; min-height: 0; max-height: 86vh; }
 .dialog-panel > header { padding: 16px 20px 10px; }
@@ -751,7 +755,7 @@ details.card .card-pad { padding-top: 4px; }
   border-top: 1px solid var(--border);
 }
 .dialog-panel > footer .dialog-link { margin-right: auto; }
-.dialog:focus { outline: none; }
+.modal:focus { outline: none; }
 .dialog-group + .dialog-group { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
 .dialog-group-title {
   margin: 0 0 10px;
@@ -765,17 +769,17 @@ details.card .card-pad { padding-top: 4px; }
   grid-template-columns: repeat(auto-fit, minmax(216px, 1fr));
   gap: 14px 18px;
 }
-.dialog .field { min-width: 0; display: flex; flex-direction: column; }
-.dialog .field > .input:not([role="switch"]),
-.dialog .field > .select,
-.dialog .field > .textarea { width: 100%; }
-.dialog .field-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; flex-wrap: wrap; }
-.dialog .field-head label { font-size: 12.5px; font-weight: 500; }
-.dialog .hint { margin: 7px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--muted); }
-.dialog .switch-row { min-height: 34px; }
-.dialog .field > .switch-row .state { font-size: 11.5px; }
+.modal .field { min-width: 0; display: flex; flex-direction: column; }
+.modal .field > .input:not([role="switch"]),
+.modal .field > .select,
+.modal .field > .textarea { width: 100%; }
+.modal .field-head { display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; flex-wrap: wrap; }
+.modal .field-head label { font-size: 12.5px; font-weight: 500; }
+.modal .hint { margin: 7px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--muted); }
+.modal .switch-row { min-height: 34px; }
+.modal .field > .switch-row .state { font-size: 11.5px; }
 
-.dialog.readme .dialog-panel > section { padding-top: 8px; }
+.modal.readme .dialog-panel > section { padding-top: 8px; }
 
 .delete-options { display: grid; gap: 8px; margin: 14px 0 16px; }
 .delete-option {

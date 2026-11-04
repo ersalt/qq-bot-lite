@@ -154,7 +154,7 @@ function openInstallDialog() {
   closeDialog();
   const panel = document.createElement("dialog");
   panel.id = "dialog";
-  panel.className = "dialog install";
+  panel.className = "modal install";
   panel.addEventListener("click", (event) => {
     if (event.target === panel) closeDialog();
   });
@@ -375,7 +375,7 @@ function openDeleteDialog(plugin) {
   closeDialog();
   const panel = document.createElement("dialog");
   panel.id = "dialog";
-  panel.className = "dialog";
+  panel.className = "modal";
   panel.addEventListener("click", (event) => {
     if (event.target === panel) closeDialog();
   });
@@ -494,7 +494,7 @@ function buildReadmeDialog(plugin, data) {
   closeDialog();
   const panel = document.createElement("dialog");
   panel.id = "dialog";
-  panel.className = "dialog readme";
+  panel.className = "modal readme";
   panel.addEventListener("click", (event) => {
     if (event.target === panel) closeDialog();
   });
@@ -560,7 +560,7 @@ function buildPluginDialog(plugin, fields, values) {
   // 原生 <dialog>：焦点陷阱、ESC、背景遮罩都由浏览器负责
   const panel = document.createElement("dialog");
   panel.id = "dialog";
-  panel.className = "dialog";
+  panel.className = "modal";
   panel.addEventListener("click", (event) => {
     if (event.target === panel) closeDialog();
   });
