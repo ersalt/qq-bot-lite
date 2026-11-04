@@ -180,7 +180,7 @@ class ChatService:
         # 图只在真要回这条消息时才下载解析。群里绝大部分图跟它无关，
         # 之前的写法是每张都下、每张都解码，日志里一片“图片 N 张”白干活。
         prepared = await self.images.prepare(event.content.images) if decision.should else []
-        self.store.add(
+        user_row_id = self.store.add(
             session,
             "user",
             event.content.text,
@@ -211,7 +211,7 @@ class ChatService:
             return
 
         async with self._lock_for(session):
-            await self._reply(conn, event, history, ctx, decision, prepared)
+            await self._reply(conn, event, history, ctx, decision, prepared, user_row_id)
 
     # ---------- 命令 ----------
 
@@ -293,6 +293,7 @@ class ChatService:
         ctx: HookContext,
         decision: Decision,
         prepared: list | None = None,
+        trigger_id: int | None = None,
     ) -> None:
         timing = _Timing()
         budget = self.cfg.context.max_tokens
@@ -366,12 +367,12 @@ class ChatService:
         except LLMError as exc:
             log.error("模型请求失败: %s", exc)
             if collected:
-                self._store_reply(event, collected)
+                self._store_reply(event, collected, trigger_id)
             return
         except Exception:  # noqa: BLE001
             log.exception("回复流程异常 session=%s", event.session_key)
             if collected:
-                self._store_reply(event, collected)
+                self._store_reply(event, collected, trigger_id)
             return
 
         # 思考把配额吃光、正文一个字都没有：换无思考模式兜一次。
@@ -399,7 +400,7 @@ class ChatService:
             # 写回上下文的是“实际发出去的文本”（at 段已渲染成 at 名字(QQ)），
             # 不是模型原文。否则历史里会保留模型写的 @，下一轮它会照着学。
             texts = result.texts if result is not None and result.texts else collected
-            self._store_reply(event, texts)
+            self._store_reply(event, texts, trigger_id)
         elif result is None or result.sent == 0:
             log.warning(
                 "重答后仍然没有正文，这条没有发出去 | %s | %s | msg=%s",
@@ -484,11 +485,17 @@ class ChatService:
 
     # ---------- 杂项 ----------
 
-    def _store_reply(self, event: MessageEvent, collected: list[str]) -> None:
+    def _store_reply(self, event: MessageEvent, collected: list[str], reply_to: int | None = None) -> None:
         text = clean_text("".join(collected), self.cfg.persona.nickname)
         if not text:
             return
-        self.store.add(event.session_key, "assistant", text, speaker=self.cfg.persona.nickname)
+        self.store.add(
+            event.session_key,
+            "assistant",
+            text,
+            speaker=self.cfg.persona.nickname,
+            reply_to=reply_to,
+        )
 
     def _lock_for(self, session: str) -> asyncio.Lock:
         lock = self._locks.get(session)

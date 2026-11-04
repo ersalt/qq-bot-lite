@@ -11,16 +11,24 @@ def _store(tmp_path) -> MessageStore:
     return MessageStore(tmp_path / "messages.db")
 
 
-def _msg(mid: int, role: str, content: str) -> StoredMessage:
+def _msg(
+    mid: int,
+    role: str,
+    content: str,
+    *,
+    speaker: str | None = None,
+    reply_to: int | None = None,
+) -> StoredMessage:
     return StoredMessage(
         id=mid,
         session="group:1",
         role=role,
-        speaker="alice" if role == "user" else "bot",
+        speaker=speaker or ("alice" if role == "user" else "bot"),
         user_id=1,
         content=content,
         has_image=False,
         created_at=0.0,
+        reply_to=reply_to,
     )
 
 
@@ -90,3 +98,48 @@ def test_build_history_respects_bot_reply_switch():
         messages, ContextConfig(include_bot_replies=False), is_group=False
     )
     assert [item["role"] for item in without_bot] == ["user"]
+
+
+def test_keep_addressed_uses_reply_link_not_adjacency():
+    question = _msg(1, "user", "问它", speaker="alice")
+    chatter = _msg(2, "user", "别人插话", speaker="bob")
+    answer = _msg(3, "assistant", "回答", reply_to=1)
+
+    kept = keep_addressed([question, chatter, answer])
+    assert [item.id for item in kept] == [1, 3]
+
+
+def test_keep_addressed_falls_back_for_old_rows():
+    first = _msg(1, "user", "第一条", speaker="alice")
+    second = _msg(2, "user", "第二条", speaker="bob")
+    old_answer = _msg(3, "assistant", "老回复")  # 没有 reply_to
+
+    kept = keep_addressed([first, second, old_answer])
+    assert [item.id for item in kept] == [2, 3]
+
+
+def test_build_history_marks_assistant_addressee():
+    messages = [
+        _msg(1, "user", "问它", speaker="alice"),
+        _msg(2, "assistant", "回答", reply_to=1),
+    ]
+    history = build_history(messages, ContextConfig(), is_group=True)
+    assert "alice: 问它" in history[0]["content"]
+    assert history[1]["content"] == "（回 alice）回答"
+
+    # 触发消息不在窗口里时不硬编一个名字
+    outside = build_history(
+        [_msg(3, "assistant", "回答", reply_to=99)], ContextConfig(), is_group=True
+    )
+    assert outside[0]["content"] == "回答"
+
+
+def test_store_persists_reply_link(tmp_path):
+    store = _store(tmp_path)
+    try:
+        user_id = store.add("group:1", "user", "问")
+        store.add("group:1", "assistant", "答", reply_to=user_id)
+        messages = store.latest_after("group:1", 0, 10)
+        assert messages[-1].reply_to == user_id
+    finally:
+        store.close()

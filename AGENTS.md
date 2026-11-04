@@ -93,6 +93,8 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
 - **改版本号忘了改 CHANGELOG 标题** → `test_changelog_has_entry_for_current_version` 挂。
 - **上下文窗口取数必须用 `latest_after()`**：`after()` 是最早优先，历史一超过上限
   最新对话就进不了窗口，模型会“三句就忘”。回归测试见 `tests/test_context_window.py`。
+- **历史配对必须用 `assistant.reply_to`**：不要用“紧挨着 assistant 的 user”，群里插话
+  会把回复算到别人头上；老数据没有 reply_to 时才退回相邻逻辑。见 `app/context/window.py`。
 - **`body` 不能设 `overflow-x: hidden`**：它会变成没有滚动范围的滚动容器，滚轮被吃掉，
   整页滚不动（进阶设置展开后最明显）。`html`/`body` 一律 `overflow-x: clip`。
 - `python -m app.pluginkit.check` 在 GBK 控制台会因 `✓` 编码报错：先

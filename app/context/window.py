@@ -14,7 +14,12 @@ def _stamp(message: StoredMessage) -> str:
     return _dt.datetime.fromtimestamp(message.created_at).strftime("%H:%M")
 
 
-def _render(message: StoredMessage, is_group: bool, timestamps: bool) -> str:
+def _render(
+    message: StoredMessage,
+    is_group: bool,
+    timestamps: bool,
+    addressee: str | None = None,
+) -> str:
     text = message.content.strip()
     if not text:
         # 纯图片消息也要在历史里占一行，否则模型不知道那时候发过图。
@@ -23,6 +28,8 @@ def _render(message: StoredMessage, is_group: bool, timestamps: bool) -> str:
         speaker = message.speaker or (str(message.user_id) if message.user_id else "某人")
         prefix = f"[{_stamp(message)}] " if timestamps else ""
         return f"{prefix}{speaker}: {text}"
+    if message.role == "assistant" and is_group and addressee:
+        return f"（回 {addressee}）{text}"
     return text
 
 
@@ -33,12 +40,23 @@ def keep_addressed(messages: list[StoredMessage]) -> list[StoredMessage]:
     （它以一条一次性的转录块补上，注入完就删）。我们原来是全员闲聊全塞进去，
     模型每轮都要先把几十条跟它无关的话读一遍再判断谁在说什么 —— 实测思考量
     会从 100 上下涨到 267~514，正好是那 4~6 秒的来源。
+
+    assistant 消息现在带 reply_to（触发它的 user 消息 id）。按 id 配对，
+    而不是“紧挨着 assistant 的那条 user”：群里有人插话时，紧挨着的很可能是
+    另一个人的闲话，会把回复算到错的人头上。
     """
-    kept: list[StoredMessage] = []
+    by_id = {message.id: message for message in messages}
+    kept_ids: set[int] = set()
     for index, message in enumerate(messages):
-        following = messages[index + 1] if index + 1 < len(messages) else None
-        if message.role == "assistant" or (following is not None and following.role == "assistant"):
-            kept.append(message)
+        if message.role != "assistant":
+            continue
+        kept_ids.add(message.id)
+        if message.reply_to and message.reply_to in by_id:
+            kept_ids.add(message.reply_to)
+            continue
+        # 老数据没有 reply_to，只能退化成“紧挨着的那条 user”
+        if index > 0 and messages[index - 1].role == "user":
+            kept_ids.add(messages[index - 1].id)
 
     # 末尾那段还没被回应的群聊保留，否则模型不知道“刚才聊到哪了”。
     # 这一段是它这次要接的上下文，和 AstrBot 的 backlog 块等价。
@@ -46,8 +64,8 @@ def keep_addressed(messages: list[StoredMessage]) -> list[StoredMessage]:
         start = len(messages) - 1
         while start > 0 and messages[start - 1].role != "assistant":
             start -= 1
-        kept.extend(messages[start:])
-    return kept
+        kept_ids.update(message.id for message in messages[start:])
+    return [message for message in messages if message.id in kept_ids]
 
 
 def pick_anchor_window(
@@ -79,11 +97,19 @@ def build_history(
     budget_override: int | None = None,
 ) -> list[dict[str, Any]]:
     """messages 为从旧到新的顺序，返回同样顺序的 chat messages（不含当前这条）。"""
+    by_id = {message.id: message for message in messages}
     items: list[dict[str, Any]] = []
     for message in messages:
         if message.role == "assistant" and not cfg.include_bot_replies:
             continue
-        text = _render(message, is_group, cfg.timestamps)
+        addressee = None
+        if message.role == "assistant" and message.reply_to:
+            trigger = by_id.get(message.reply_to)
+            if trigger is not None:
+                addressee = trigger.speaker or (
+                    str(trigger.user_id) if trigger.user_id else None
+                )
+        text = _render(message, is_group, cfg.timestamps, addressee=addressee)
         if not text:
             continue
         item: dict[str, Any] = {"role": message.role, "content": text}
