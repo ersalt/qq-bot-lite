@@ -47,6 +47,11 @@ function pluginCard(plugin) {
   if (plugin.last_error) card.append(el("p", "plugin-hint", plugin.last_error));
 
   const actions = el("div", "plugin-actions");
+  const docs = uiButton("文档", { variant: "outline", size: "sm" });
+  docs.type = "button";
+  docs.addEventListener("click", () => openReadmeDialog(plugin));
+  actions.append(docs);
+
   if (plugin.config?.length) {
     const settings = uiButton("设置", { variant: "outline", size: "sm" });
     settings.type = "button";
@@ -200,6 +205,62 @@ async function togglePlugin(plugin, enabled, input) {
   } finally {
     input.disabled = false;
   }
+}
+
+/* ---------- README 弹窗 ---------- */
+
+async function openReadmeDialog(plugin) {
+  try {
+    const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.name)}/readme`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      toast(data.message || "读取 README 失败", "bad");
+      return;
+    }
+    buildReadmeDialog(plugin, data);
+  } catch (error) {
+    toast(`读取 README 失败：${error.message}`, "bad");
+  }
+}
+
+function buildReadmeDialog(plugin, data) {
+  closeDialog();
+  const panel = document.createElement("dialog");
+  panel.id = "dialog";
+  panel.className = "dialog readme";
+  panel.addEventListener("click", (event) => {
+    if (event.target === panel) closeDialog();
+  });
+
+  const box = el("div", "dialog-panel");
+  const head = document.createElement("header");
+  const titleRow = el("div", "dialog-title-row");
+  titleRow.append(el("h2", null, `文档 · ${plugin.title}`));
+  const close = uiButton("×", { variant: "ghost", size: "icon" });
+  close.setAttribute("aria-label", "关闭");
+  close.addEventListener("click", closeDialog);
+  titleRow.append(close);
+  head.append(titleRow);
+  const meta = `${plugin.name} / ${data.filename}${data.truncated ? "（内容过长，已截断）" : ""}`;
+  head.append(el("p", null, meta));
+  box.append(head);
+
+  const body = document.createElement("section");
+  body.append(el("pre", "readme-body", data.text || "（空文件）"));
+  box.append(body);
+
+  const foot = document.createElement("footer");
+  const done = uiButton("关闭", { variant: "outline" });
+  done.type = "button";
+  done.addEventListener("click", closeDialog);
+  foot.append(done);
+  box.append(foot);
+
+  panel.append(box);
+  document.body.append(panel);
+  panel.tabIndex = -1;
+  panel.showModal();
+  panel.focus();
 }
 
 /* ---------- 设置弹窗 ---------- */

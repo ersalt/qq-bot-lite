@@ -196,6 +196,48 @@ def test_plugins_listed_with_manifest(tmp_path: Path) -> None:
         assert demo["enabled"] is False
 
 
+def test_plugin_readme_and_missing(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path, plugin_dir=FIXTURE_PLUGINS)
+    with client:
+        page = client.get("/api/plugins/demo/readme")
+        assert page.status_code == 200, page.text
+        data = page.json()
+        assert data["ok"] is True
+        assert "测试用的 README" in data["text"]
+        assert data["filename"].lower() == "readme.md"
+        assert data["truncated"] is False
+
+    # 没有 README 的插件：404 + 人话，不是 500
+    root = tmp_path / "plugins" / "noreadme"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text('title = "没有文档"\n', encoding="utf-8")
+    (root / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        missing = client.get("/api/plugins/noreadme/readme")
+        assert missing.status_code == 404
+        assert "README" in missing.json()["message"]
+        unknown = client.get("/api/plugins/nope/readme")
+        assert unknown.status_code == 404
+
+
+def test_plugin_readme_truncates_large_file(tmp_path: Path) -> None:
+    from app.web.plugin_routes import README_LIMIT
+
+    root = tmp_path / "plugins" / "huge"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text('title = "大文档"\n', encoding="utf-8")
+    (root / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+    (root / "README.md").write_text("A" * (README_LIMIT + 10), encoding="utf-8")
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        data = client.get("/api/plugins/huge/readme").json()
+        assert data["ok"] is True
+        assert data["truncated"] is True
+        assert len(data["text"]) == README_LIMIT
+
+
 def test_plugin_settings_roundtrip(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, plugin_dir=FIXTURE_PLUGINS)
     with client:

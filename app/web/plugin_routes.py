@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,6 +15,23 @@ from ..pluginkit.registry import ExtensionRegistry
 from ..pluginkit.settings_store import defaults_from
 
 log = logging.getLogger(__name__)
+
+# README 只做展示，不执行、不渲染；超过这个大小截断，避免把几 MB 的文档塞进页面。
+README_LIMIT = 256 * 1024
+_README_NAMES = ("readme.md", "readme.markdown", "readme.txt")
+
+
+def _find_readme(folder: Path) -> Path | None:
+    """在插件根目录找 README，大小写不敏感；不递归。"""
+    try:
+        entries = list(folder.iterdir())
+    except OSError:
+        return None
+    files = {item.name.lower(): item for item in entries if item.is_file()}
+    for name in _README_NAMES:
+        if name in files:
+            return files[name]
+    return None
 
 
 def mount_plugin_routers(app: FastAPI, registry: ExtensionRegistry) -> None:
@@ -67,6 +85,34 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
     @app.get("/api/plugins")
     async def list_plugins() -> JSONResponse:
         return JSONResponse({"plugins": registry.list_plugins(), "enabled": list(registry.enabled)})
+
+    @app.get("/api/plugins/{name}/readme")
+    async def plugin_readme(name: str) -> JSONResponse:
+        """插件 README 原文。只读文本，前端用 textContent 展示。"""
+        if not registry.manifests:
+            registry.scan()
+        if name not in registry.manifests:
+            raise HTTPException(status_code=404, detail="插件不存在")
+        folder = registry.root_of(name) / name
+        path = _find_readme(folder)
+        if path is None:
+            return JSONResponse(
+                {"ok": False, "message": "这个插件没有 README"}, status_code=404
+            )
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            return JSONResponse({"ok": False, "message": f"读取失败：{exc}"}, status_code=500)
+        text = raw[:README_LIMIT].decode("utf-8", errors="replace").lstrip("\ufeff")
+        return JSONResponse(
+            {
+                "ok": True,
+                "name": name,
+                "filename": path.name,
+                "text": text,
+                "truncated": len(raw) > README_LIMIT,
+            }
+        )
 
     @app.post("/api/plugins/{name}/enabled")
     async def toggle(name: str, request: Request) -> JSONResponse:
