@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -165,6 +167,80 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
                 "plugins": registry.list_plugins(),
                 "restart": False,
                 "message": message,
+            }
+        )
+
+    @app.delete("/api/plugins/{name}")
+    async def delete_plugin(name: str, request: Request) -> JSONResponse:
+        """删除插件目录；可选连持久化数据一起删。
+
+        先把目录改名成隐藏的 .deleting-*（原子消失，discover 会跳过），再清理。
+        这样即使文件被占用，面板上也不会再出现半个插件。
+        """
+        if not registry.manifests:
+            registry.scan()
+        if name not in registry.manifests:
+            raise HTTPException(status_code=404, detail="插件不存在")
+
+        root = registry.root_of(name)
+        folder = (root / name).resolve()
+        try:
+            folder.relative_to(root.resolve())
+        except ValueError:
+            return JSONResponse({"ok": False, "message": "插件目录不在 plugins/ 下"}, status_code=400)
+        if not folder.is_dir():
+            return JSONResponse({"ok": False, "message": "插件目录不存在"}, status_code=404)
+
+        with_data = request.query_params.get("data", "").lower() in {"1", "true", "yes"}
+        had_panel = bool(registry.pages.get(name)) or name in registry.routers
+        await registry.unload(name)
+
+        trash = root / f".deleting-{name}-{int(time.time())}"
+        try:
+            folder.rename(trash)
+        except OSError as exc:
+            # 改名失败：还在 enabled 里，重新加载把它恢复回去
+            log.exception("删除插件失败（改名）: %s", name)
+            await registry.reload(name)
+            return JSONResponse({"ok": False, "message": f"删除失败：{exc}"}, status_code=500)
+
+        if name in registry.enabled:
+            registry.enabled.remove(name)
+            save_enabled(list(registry.enabled))
+        registry.scan()
+
+        warning = ""
+        data_removed = False
+        if with_data:
+            data_dir = registry.plugin_data_dir(name).resolve()
+            try:
+                data_dir.relative_to(registry.data_dir.resolve())
+                if data_dir.exists():
+                    shutil.rmtree(data_dir)
+                data_removed = True
+            except (OSError, ValueError) as exc:
+                log.warning("删除插件数据失败 %s: %s", name, exc)
+                warning = f"插件已删除，但数据目录没删干净：{exc}"
+
+        shutil.rmtree(trash, ignore_errors=True)
+        if trash.exists():
+            log.warning("插件临时目录没删干净: %s", trash)
+            warning = f"{warning} 临时文件残留：{trash}".strip()
+
+        if with_data and data_removed:
+            message = f"已删除「{name}」和它的持久化数据"
+        else:
+            message = f"已删除「{name}」，持久化数据保留在 data/plugin_data/{name}/"
+        if had_panel:
+            message += "；面板路由要重启进程才彻底消失"
+        log.info("插件已删除: %s（数据=%s）", name, "删除" if with_data else "保留")
+        return JSONResponse(
+            {
+                "ok": True,
+                "plugins": registry.list_plugins(),
+                "message": message,
+                "data_removed": data_removed,
+                "warning": warning,
             }
         )
 

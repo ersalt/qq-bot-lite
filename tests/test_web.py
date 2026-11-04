@@ -238,6 +238,57 @@ def test_plugin_hot_reload_and_stop(tmp_path: Path) -> None:
         assert (root / "stopped.txt").exists()
 
 
+def _make_plugin(root: Path, name: str) -> Path:
+    folder = root / name
+    folder.mkdir(parents=True)
+    (folder / "plugin.toml").write_text(f'title = "{name}"\n', encoding="utf-8")
+    (folder / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+    return folder
+
+
+def test_plugin_delete_keeps_data_by_default(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    folder = _make_plugin(plugin_dir, "del")
+    data_dir = tmp_path / "plugin_data" / "del"
+    data_dir.mkdir(parents=True)
+    (data_dir / "settings.toml").write_text("x = 1\n", encoding="utf-8")
+
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.delete("/api/plugins/del")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["ok"] is True
+        assert not folder.exists()
+        assert (data_dir / "settings.toml").exists()
+        assert all(item["name"] != "del" for item in payload["plugins"])
+        assert payload["data_removed"] is False
+
+
+def test_plugin_delete_with_data_and_enabled_cleanup(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _make_plugin(plugin_dir, "del")
+    data_dir = tmp_path / "plugin_data" / "del"
+    data_dir.mkdir(parents=True)
+    (data_dir / "settings.toml").write_text("x = 1\n", encoding="utf-8")
+
+    client, config_path = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        enabled = client.post("/api/plugins/del/enabled", json={"enabled": True})
+        assert enabled.status_code == 200, enabled.text
+        assert 'enabled = ["del"]' in config_path.read_text(encoding="utf-8")
+
+        response = client.delete("/api/plugins/del?data=1")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["data_removed"] is True
+        assert not data_dir.exists()
+        assert "enabled = []" in config_path.read_text(encoding="utf-8")
+
+        unknown = client.delete("/api/plugins/nope")
+        assert unknown.status_code == 404
+
+
 def test_plugin_reload_unknown(tmp_path: Path) -> None:
     (tmp_path / "plugins").mkdir()
     client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")

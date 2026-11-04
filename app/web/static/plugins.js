@@ -74,6 +74,11 @@ function pluginCard(plugin) {
   reload.addEventListener("click", () => reloadPlugin(plugin, reload));
   actions.append(reload);
 
+  const remove = uiButton("删除", { variant: "destructive", size: "sm" });
+  remove.type = "button";
+  remove.addEventListener("click", () => openDeleteDialog(plugin));
+  actions.append(remove);
+
   if (!actions.childElementCount) actions.append(el("span", "plugin-hint", "没有可调项"));
   card.append(actions);
   return card;
@@ -228,6 +233,115 @@ async function togglePlugin(plugin, enabled, input) {  input.disabled = true;
   } finally {
     input.disabled = false;
   }
+}
+
+/* ---------- 删除弹窗 ---------- */
+
+function openDeleteDialog(plugin) {
+  closeDialog();
+  const panel = document.createElement("dialog");
+  panel.id = "dialog";
+  panel.className = "dialog";
+  panel.addEventListener("click", (event) => {
+    if (event.target === panel) closeDialog();
+  });
+
+  const box = el("div", "dialog-panel");
+  const head = document.createElement("header");
+  const titleRow = el("div", "dialog-title-row");
+  titleRow.append(el("h2", null, "删除插件"));
+  const close = uiButton("×", { variant: "ghost", size: "icon" });
+  close.setAttribute("aria-label", "关闭");
+  close.addEventListener("click", closeDialog);
+  titleRow.append(close);
+  head.append(titleRow);
+  head.append(el("p", null, `${plugin.title} · ${plugin.name}`));
+  box.append(head);
+
+  const body = document.createElement("section");
+  body.append(el("p", "hint", "插件目录会被删除，不能撤销。"));
+  if (plugin.enabled) body.append(el("p", "hint", "插件正在运行，删除前会先停用它。"));
+
+  const options = el("div", "delete-options");
+  const makeOption = (value, title, note) => {
+    const label = el("label", "delete-option");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "delete-data";
+    input.value = value;
+    if (value === "keep") input.checked = true;
+    const text = el("span");
+    text.append(el("b", null, title));
+    text.append(el("small", null, note));
+    label.append(input, text);
+    return label;
+  };
+  options.append(
+    makeOption("keep", "只删插件", "保留 data/plugin_data/ 下的设置与数据"),
+    makeOption("purge", "连持久化数据一起删", `同时删除 data/plugin_data/${plugin.name}/`),
+  );
+  body.append(options);
+
+  const confirm = el("label", "delete-confirm");
+  const check = document.createElement("input");
+  check.type = "checkbox";
+  check.id = "delete-confirm";
+  confirm.append(check, el("span", null, "我知道删除后不能恢复"));
+  body.append(confirm);
+  box.append(body);
+
+  const foot = document.createElement("footer");
+  const cancel = uiButton("取消", { variant: "outline" });
+  cancel.type = "button";
+  cancel.addEventListener("click", closeDialog);
+  const remove = uiButton("删除插件", { variant: "destructive" });
+  remove.type = "button";
+  remove.disabled = true;
+  foot.append(cancel, remove);
+  box.append(foot);
+
+  const purgeSelected = () =>
+    body.querySelector('input[name="delete-data"][value="purge"]').checked;
+  const paintLabel = () => {
+    remove.textContent = purgeSelected() ? "删除插件和数据" : "删除插件";
+  };
+  body.addEventListener("change", paintLabel);
+  check.addEventListener("change", () => {
+    remove.disabled = !check.checked;
+  });
+
+  remove.addEventListener("click", async () => {
+    if (!check.checked) return;
+    remove.disabled = true;
+    remove.textContent = "正在删除…";
+    try {
+      const response = await fetch(
+        `/api/plugins/${encodeURIComponent(plugin.name)}?data=${purgeSelected() ? 1 : 0}`,
+        { method: "DELETE" },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        toast(data.message || "删除失败", "bad");
+        remove.disabled = false;
+        paintLabel();
+        return;
+      }
+      PLUGINS.items = data.plugins || [];
+      paintPlugins(PLUGINS.items);
+      closeDialog();
+      toast(data.warning || data.message || "插件已删除", data.warning ? "bad" : "ok");
+    } catch (error) {
+      toast(`删除失败：${error.message}`, "bad");
+      remove.disabled = false;
+      paintLabel();
+    }
+  });
+
+  panel.append(box);
+  document.body.append(panel);
+  panel.tabIndex = -1;
+  panel.showModal();
+  panel.focus();
 }
 
 /* ---------- README 弹窗 ---------- */

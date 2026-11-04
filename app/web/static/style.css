@@ -762,6 +762,37 @@ details.card .card-pad { padding-top: 4px; }
 .dialog .field > .switch-row .state { font-size: 11.5px; }
 
 .dialog.readme .dialog-panel > section { padding-top: 8px; }
+
+.delete-options { display: grid; gap: 8px; margin: 14px 0 16px; }
+.delete-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color var(--dur-2) var(--ease-out-quart),
+              background-color var(--dur-2) var(--ease-out-quart);
+}
+.delete-option:hover { border-color: var(--input); }
+.delete-option:has(input:checked) {
+  border-color: color-mix(in oklab, var(--primary) 45%, var(--border));
+  background: color-mix(in oklab, var(--primary) 4%, var(--card));
+}
+.delete-option input { flex: none; margin-top: 3px; accent-color: var(--primary); }
+.delete-option b { font-size: 13px; font-weight: 500; }
+.delete-option small { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); }
+.delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.delete-confirm input { accent-color: var(--danger); }
+
 .readme-body {
   margin: 0;
   font-family: var(--font-mono);
