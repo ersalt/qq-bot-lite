@@ -34,7 +34,8 @@ Invoke-WebRequest -Method POST -Uri http://127.0.0.1:8790/api/shutdown
 http://127.0.0.1:8790/
 ```
 
-- 日志：`logs/app.log`，控制台同一份格式（见 `docs/log-spec.md`）。
+- 日志：`logs/app-YYYYMMDD-HHMMSS.log`（每次启动一个），`logs/latest.txt` 指向最新；
+  保留最近 30 次启动，控制台同一份格式（见 `docs/log-spec.md`）。
 - 配置：`config/config.toml`（**不入库**，首次启动从 `config.example.toml` 复制）。
 - 数据：`data/app.db`（会话）、`data/plugin_data/<插件id>/`（插件数据）、`data/images/`。
 

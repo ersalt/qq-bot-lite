@@ -123,7 +123,7 @@ user/assistant，动态内容（时间、场景、群语汇）拼进那条 syste
 - 流式返回，凑够一句就发，不等整段生成完。
 - 同会话串行（避免两条回复互相盖），不同会话并行。
 
-`logs/app.log` 里每条回复都会打 `首字 xxx ms | 总计 x.xs | tokens 输入/输出（思考 X，正文 Y）`。
+`logs/app-YYYYMMDD-HHMMSS.log` 里每条回复都会打 `首字 xxx ms | 总计 x.xs | tokens 输入/输出（思考 X，正文 Y）`；每次启动新建一个文件，`logs/latest.txt` 指向最新。
 
 ## 扩展（群语汇第二阶段）
 
@@ -209,7 +209,7 @@ plugins/            插件（目录名即插件 id；_template 是骨架，不�
                     真实插件由各自的独立仓库部署进来（如 whale_lexicon 的 tools/deploy-to-bot.ps1）
 data/app.db         会话数据库
 data/plugin_data/   插件运行期数据
-logs/app.log        运行日志
+logs/app-*.log      每次启动一个运行日志（latest.txt 指向最新）
 docs/               项目说明、插件开发、日志格式
 tests/              端到端自测
 VERSION             版本号唯一来源

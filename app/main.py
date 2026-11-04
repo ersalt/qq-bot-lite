@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import logging
-import logging.handlers
 import signal
 import sys
 from contextlib import asynccontextmanager
@@ -20,6 +20,7 @@ from .console import ConsoleFormatter, enable_ansi, print_banner, set_title, sta
 from .context.store import MessageStore
 from .core.pipeline import ChatService
 from .llm.client import LLMClient
+from .logfiles import LOG_KEEP, new_session_log, prune_session_logs, write_latest
 from .media.images import ImageLoader
 from .onebot.members import MemberDirectory
 from .onebot.server import OneBotServer
@@ -69,13 +70,22 @@ def setup_logging(level: str = "info") -> bool:
 
     log_dir = ROOT / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    file_handler = logging.handlers.RotatingFileHandler(
-        log_dir / "app.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8"
-    )
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", datefmt="%H:%M:%S")
-    )
-    root.addHandler(file_handler)
+    now = _dt.datetime.now()
+    try:
+        log_path = new_session_log(log_dir, now=now)
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", datefmt="%H:%M:%S")
+        )
+        root.addHandler(file_handler)
+        removed = prune_session_logs(log_dir)
+        write_latest(log_dir, log_path)
+        log.info("===== qq-bot-lite v%s 启动 %s =====", __version__, now.strftime("%Y-%m-%d %H:%M:%S"))
+        log.info("日志文件: %s", log_path)
+        if removed:
+            log.info("清理旧日志: %d 个（保留最近 %d 次启动）", len(removed), LOG_KEEP)
+    except OSError as exc:
+        log.error("日志文件建不出来，本次只输出到控制台: %s", exc)
 
     for noisy in ("httpx", "httpcore", "uvicorn.error", "uvicorn.access", "websockets"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
@@ -199,6 +209,7 @@ def build_app(
             await images.aclose()
             store.close()
             log.info("%s", service.stats_line(connected=False), extra={"tag": "stat"})
+            log.info("===== 退出 %s =====", _dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     app = FastAPI(title="qq-bot-lite", version=__version__, lifespan=lifespan)
     app.state.cfg = cfg
