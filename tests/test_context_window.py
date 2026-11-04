@@ -106,6 +106,15 @@ def test_build_ambient_marks_images():
     assert "「bob」: [图片]" in block
 
 
+def test_build_ambient_marks_directed_messages():
+    block = build_ambient(
+        [_msg(1, "user", "at 小鲸鱼(10000) 在吗", speaker="bob")],
+        self_id=10000,
+    )
+    assert "⚠️[DIRECTED AT YOU]" in block
+    assert "at 小鲸鱼(10000) 在吗" in block
+
+
 def test_build_ambient_skips_empty_and_assistant():
     assert build_ambient([]) == ""
     assert build_ambient([_msg(1, "user", "", speaker="bob")]) == ""

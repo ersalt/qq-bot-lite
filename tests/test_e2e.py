@@ -131,7 +131,11 @@ async def collect_actions(ws, timeout: float = 3.0) -> list[dict]:
                 if asked == "4242"
                 else [{"type": "text", "data": {"text": "之前说过的话"}}]
             )
-            data = {"message_id": payload["params"].get("message_id"), "message": segments}
+            data = {
+                "message_id": payload["params"].get("message_id"),
+                "sender": {"card": "阿伟", "nickname": "阿伟"},
+                "message": segments,
+            }
         elif action.startswith("send_"):
             actions.append(payload)
             data = {"message_id": 5000 + len(actions)}
@@ -179,7 +183,8 @@ async def test_quote_reply_without_at_triggers(tmp_path: Path) -> None:
     assert actions, "引用机器人的消息应该触发回复"
     assert len(state.requests) == 2
     sent = json.dumps(state.requests[1]["messages"], ensure_ascii=False)
-    assert "引用了你之前说的话" in sent
+    assert "<Quoted Message>" in sent
+    assert "之前说过的话" in sent
 
 
 @pytest.mark.asyncio

@@ -63,7 +63,10 @@ AMBIENT_TOKEN_BUDGET = 800
 
 
 def build_ambient(
-    messages: list[StoredMessage], *, budget: int = AMBIENT_TOKEN_BUDGET
+    messages: list[StoredMessage],
+    *,
+    budget: int = AMBIENT_TOKEN_BUDGET,
+    self_id: int | None = None,
 ) -> str:
     """把上次回复之后的群聊拼成一次性 <system_reminder> 块。
 
@@ -83,6 +86,8 @@ def build_ambient(
             rendered = f"[{_stamp(message)}] 「{speaker}」: [图片]"
         elif message.has_image and "[图片]" not in rendered:
             rendered += " [图片]"
+        if self_id and "at " in rendered and f"({self_id})" in rendered:
+            rendered = "⚠️[DIRECTED AT YOU] " + rendered
         cost = estimate_text_tokens(rendered) + 2
         if lines and used + cost > budget:
             break

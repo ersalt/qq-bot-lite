@@ -31,6 +31,13 @@ log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
+class _QuotedInfo:
+    sender: str = ""
+    text: str = ""
+    images: list[ImageRef] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class _Timing:
     start: float = field(default_factory=time.perf_counter)
     first_piece: float | None = None
@@ -116,17 +123,24 @@ class ChatService:
         )
 
         group_label = await self._group_label(event)
-        # 引用了一张图、但当前消息本身只有文字：把那张图取过来。
-        # 群里常用的姿势是“先发图，再引用那张图说一句”，不取的话模型只会回“图呢？”。
-        # 只有真要回复时才去取，否则每次引用都要多打一次 get_msg。
-        if decision.should and conn is not None and not event.content.images and event.reply_id:
+        # 引用消息：把被引用那条的发送者/文本/图片取过来一次。
+        # 只有真要回复时才取，避免每条引用都多打一次 get_msg。
+        if decision.should and conn is not None and event.reply_id:
             try:
-                quoted = await self._quoted_images(conn, event.reply_id)
-                if quoted:
-                    event.content.images.extend(quoted)
-                    log.info("从引用里取到 %d 张图片 reply=%s", len(quoted), event.reply_id, extra={"tag": "sys"})
-            except Exception:  # noqa: BLE001 - 取不到就当作没有图
-                log.debug("取引用图片失败 reply=%s", event.reply_id, exc_info=True)
+                quoted = await self._quoted_info(conn, event.reply_id)
+                event.content.quoted_sender = quoted.sender or None
+                event.content.quoted_text = quoted.text or None
+                event.content.quoted_has_image = bool(quoted.images)
+                if not event.content.images and quoted.images:
+                    event.content.images.extend(quoted.images)
+                    log.info(
+                        "从引用里取到 %d 张图片 reply=%s",
+                        len(quoted.images),
+                        event.reply_id,
+                        extra={"tag": "sys"},
+                    )
+            except Exception:  # noqa: BLE001 - 取不到就退回原来的提示
+                log.debug("取引用消息失败 reply=%s", event.reply_id, exc_info=True)
         if conn is not None and event.is_group and event.group_id is not None:
             # 把 at 123456 还原成 at 群名片(123456)，模型才知道在叫谁
             try:
@@ -177,7 +191,7 @@ class ChatService:
 
         # 历史要在当前消息落库前取，避免把“当前这条”重复送进模型。
         history = self._history_window(session)
-        ambient = self._ambient_context(session) if event.is_group else ""
+        ambient = self._ambient_context(session, event.self_id) if event.is_group else ""
         # 图只在真要回这条消息时才下载解析。群里绝大部分图跟它无关，
         # 之前的写法是每张都下、每张都解码，日志里一片“图片 N 张”白干活。
         prepared = await self.images.prepare(event.content.images) if decision.should else []
@@ -627,35 +641,58 @@ class ChatService:
             log.debug("推进上下文锚点 session=%s 保留 %d 条", session, len(messages))
         return messages
 
-    def _ambient_context(self, session: str) -> str:
+    def _ambient_context(self, session: str, self_id: int | None = None) -> str:
         """上次回复之后的群聊，一次性注入当前消息；不进入持久历史。"""
         last = self.store.last_role_id(session, "assistant")
         messages = self.store.latest_after(session, last, 200)
-        return build_ambient(messages)
+        return build_ambient(messages, self_id=self_id)
 
-    async def _quoted_images(self, conn: OneBotConnection, reply_id: str) -> list:
-        """用 get_msg 把被引用那条消息里的图捞出来。拿不到就返回空。"""
+    async def _quoted_info(self, conn: OneBotConnection, reply_id: str) -> _QuotedInfo:
+        """用 get_msg 取被引用消息的发送者、文本、图片。拿不到就返回空。"""
         try:
             message_id: object = int(reply_id) if reply_id.lstrip("-").isdigit() else reply_id
         except (TypeError, ValueError):
             message_id = reply_id
         data = await conn.call_action("get_msg", {"message_id": message_id}, 5.0)
         if not isinstance(data, dict):
-            return []
+            return _QuotedInfo()
+        sender = data.get("sender")
+        sender_name = ""
+        if isinstance(sender, dict):
+            sender_name = str(
+                sender.get("card") or sender.get("nickname") or sender.get("user_id") or ""
+            ).strip()
         segments = data.get("message")
-        if not isinstance(segments, list):
-            return []
-        images = []
-        for segment in segments:
-            if not isinstance(segment, dict) or segment.get("type") != "image":
-                continue
-            payload = segment.get("data") or {}
-            url, file = payload.get("url"), payload.get("file")
-            if url or file:
-                images.append(ImageRef(url=url, file=file, summary=payload.get("summary")))
-            if len(images) >= self.cfg.images.max_per_message:
-                break
-        return images
+        images: list[ImageRef] = []
+        parts: list[str] = []
+        if isinstance(segments, list):
+            for segment in segments:
+                if not isinstance(segment, dict):
+                    continue
+                seg_type = segment.get("type")
+                payload = segment.get("data") or {}
+                if seg_type == "text":
+                    parts.append(str(payload.get("text") or ""))
+                elif seg_type == "image":
+                    if len(images) >= self.cfg.images.max_per_message:
+                        continue
+                    url, file = payload.get("url"), payload.get("file")
+                    if url or file:
+                        images.append(
+                            ImageRef(url=url, file=file, summary=payload.get("summary"))
+                        )
+                elif seg_type == "face":
+                    parts.append("[表情]")
+                elif seg_type == "at":
+                    name = payload.get("name") or payload.get("qq")
+                    if name:
+                        parts.append(f" at {name}")
+        elif isinstance(segments, str):
+            parts.append(segments)
+        text = " ".join("".join(parts).split())
+        if len(text) > 200:
+            text = text[:200] + "…"
+        return _QuotedInfo(sender=sender_name, text=text, images=images)
 
     async def _group_label(self, event: MessageEvent) -> str:
         """群「群名」(群号)。群名走 get_group_info，缓存 10 分钟，失败 1 分钟后重试。"""
@@ -758,7 +795,20 @@ def _prompt_text(
         )
     if ambient:
         lines.append(ambient)
-    if quoted:
+    quote_text = getattr(event.content, "quoted_text", None)
+    quote_sender = getattr(event.content, "quoted_sender", None)
+    quote_image = getattr(event.content, "quoted_has_image", False)
+    if quote_text or quote_image:
+        quoted_block = ["<Quoted Message>"]
+        if quote_sender:
+            quoted_block.append(f"「{quote_sender}」")
+        if quote_text:
+            quoted_block.append(quote_text)
+        if quote_image:
+            quoted_block.append("[图片]")
+        quoted_block.append("</Quoted Message>")
+        lines.append("\n".join(quoted_block))
+    elif quoted:
         lines.append("（他引用了你之前说的话）")
     if text:
         lines.append(text)
