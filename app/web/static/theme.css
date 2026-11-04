@@ -26,6 +26,10 @@
 
   --shadow-card: 0 1px 2px oklch(35% .04 240/.04), 0 12px 32px -26px oklch(35% .06 240/.3);
   --shadow-pop: 0 2px 6px oklch(35% .04 240/.06), 0 20px 40px -28px oklch(35% .06 240/.35);
+  --shadow-control: 0 1px 2px color-mix(in oklab, var(--text) 5%, transparent);
+  --shadow-control-hover: 0 2px 6px color-mix(in oklab, var(--text) 7%, transparent);
+  --shadow-control-open: inset 0 1px 2px color-mix(in oklab, var(--text) 9%, transparent);
+  --shadow-focus: 0 0 0 3px color-mix(in oklab, var(--primary) 15%, transparent);
 
   /* 动效：曲线与时值。只碰 transform / opacity。 */
   --ease-out-quart: cubic-bezier(.25, 1, .5, 1);

@@ -67,16 +67,15 @@ function buildRow(field, value) {
     ctl.append(wrap);
     control = input;
   } else if (field.type === "select") {
-    const select = document.createElement("select");
-    select.className = "select";
-    select.id = `f-${field.key}`;
-    for (const option of field.options || []) {
-      const node = document.createElement("option");
-      node.value = option;
-      node.textContent = option === "" ? "不发送（用模型默认）" : option;
-      select.append(node);
-    }
-    select.value = value === null || value === undefined ? "" : String(value);
+    const select = uiSelect({
+      id: `f-${field.key}`,
+      label: field.label,
+      value: value === null || value === undefined ? "" : String(value),
+      items: (field.options || []).map((option) => ({
+        value: option,
+        label: option === "" ? "不发送（用模型默认）" : option,
+      })),
+    });
     select.addEventListener("change", () => onEdit(field));
     ctl.append(select);
     control = select;

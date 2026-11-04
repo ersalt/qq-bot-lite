@@ -284,6 +284,11 @@ COMMANDS = [Command("mycmd", handler=handle, help="说明", admin=True)]
 开关用 `<input type="checkbox" role="switch" class="input">`，弹窗用原生
 `<dialog class="modal">`。主题跟着 `data-theme` 走。
 
+主面板的下拉框是 `uiSelect`（`ui.js` 里的全局函数），不是原生 `<select>`：浮层、勾选、
+键盘和深色都是自己画的。插件页想要同一套交互，引 `/static/ui.js` 后用
+`uiSelect({ items, value, ... })` 替换原生控件；只引 CSS 的话，原生 `<select>` 仍是
+Basecoat 的 `.select` 外观，跟主面板的下拉不完全一样。
+
 这些是主程序的静态资源，跨大版本可能调整；插件要绝对独立就自己写样式。
 面板里想直接跳去自己的设置：链 `/?plugin=<id>#plugins`，会打开那个插件的设置弹窗。
 

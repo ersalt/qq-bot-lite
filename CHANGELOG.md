@@ -34,6 +34,7 @@
 - 静态资源版本从秒级 mtime 改为纳秒，避免同一秒内改完 CSS/JS 仍命中旧缓存。
 - **修复上下文“鱼的记忆”**：锚点窗口原来用 `after()` 取锚点后**最早**的 126 条，历史一长，最新对话就永远进不了窗口（实机数据落后 431 条）。改用 `latest_after()` 取最新 N 条，裁剪时补齐半轮（不退化成从 assistant 开始的孤儿消息）；新增 `tests/test_context_window.py` 回归。
 - `[context] max_messages` 默认 100 → 40（约 20 轮），对齐 AstrBot 的量级；窗口从 60% 涨到 125% 才推进锚点，兼顾注意力与 KV 缓存。
+- 设置页和插件设置弹窗的下拉框改成自绘 `uiSelect`：参考 SnowLuma 调试台，40px 触发框 + 10px 浮层、32px 选项、选中勾、上下翻转；支持 ↑↓/Home/End/Enter/Space/Esc/Tab/字母定位。弹窗内浮层挂到 `dialog`，不再被 `overflow` 裁切。
 
 （下一版在这里记）
 

@@ -31,7 +31,7 @@
 | `app/web/static/app.js` | 渲染通用分组、页签、脏状态、保存、主题 | 不拼业务面板 |
 | `app/web/static/panels.js` | 模型、人设两个特殊面板 | 不碰页面骨架 |
 | `app/web/static/plugins.js` | 插件卡片、设置/文档/删除弹窗 | 不碰页面骨架 |
-| `app/web/static/ui.js` | `uiButton` / `uiInput` / `uiSwitch` 小工具 | 不写样式 |
+| `app/web/static/ui.js` | `uiButton` / `uiInput` / `uiSelect` / `uiSwitch` 小工具 | 不写样式 |
 
 没有构建链。**不许**引 React/Vue/Tailwind 运行时、CDN、Google Fonts、图标库。
 组件一律用本地 `basecoat.css` 的类名和 `data-variant`；默认态**不要**写 `data-variant="default"`。
@@ -121,6 +121,7 @@
 | 卡片内边距 | 卡头 `16px 22px`；行区 `8px 22px 12px` |
 | 卡间距 | 18px |
 | 阴影 | 卡片 `0 1px 2px / .04` + `0 12px 32px -26px / .3`；弹层再重一档 |
+| 控件阴影 | 静置 `--shadow-control` / hover `--shadow-control-hover` / 展开 `--shadow-control-open` / 焦点 `--shadow-focus` |
 | 字体 | `"Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei"` |
 | 等宽 | `"JetBrains Mono", "Cascadia Mono", Consolas`（只用于 key、版本号、计数） |
 | 字号 | 标题 30 / 卡头 14.5 / 正文 13.5 / 说明 12.5 / key 10.5 / 页脚 11.5 |
@@ -183,8 +184,11 @@
 
 ### 5.6 控件
 
-- `.input` / `.select`：高 40，左右 12，10px 圆角，1px `#e2ebf1`，13.5px。
-- `.textarea`：同圆角，内边距 10/12，行高 1.65，可纵向拉伸。
+- `.input`：高 40，左右 12，10px 圆角，1px `#e2ebf1`，13.5px。
+- `.textarea`：同圆角/边框/字号，内边距 10/12，行高 1.65，可纵向拉伸。
+- 下拉：`.ui-select`（用 `uiSelect` 生成，**不要手写原生 `<select>`**）。触发框高 40、10px 圆角、13.5px；菜单 10px 圆角、5px 内边距、6px 间距，项高 32、8px 圆角、13px；选中项右侧 14px 勾。
+- 下拉键盘：↑↓ 移动、Home/End 首尾、Enter/Space 选中、Esc 关闭、Tab 关闭并跳走，字母可定位；浮层优先向下，空间不够翻到上方。弹窗内浮层挂到 `dialog`，避免被 `overflow` 裁切。
+- `.select` 只给插件页/外部静态页的原生控件用；主面板不再用原生 `<select>`。
 - 焦点：`border-color: --primary` + `box-shadow: 0 0 0 3px primary/15%`。**不许去掉轮廓。**
 - 开关：Basecoat 的 `input[role=switch]`，44×24 轨道；不改尺寸。
 - 校验失败：`.invalid` 红边 + `.err` 红字（12.5），错误在控件下方。
@@ -338,7 +342,7 @@
 2. 静态资源走 `/static/<name>`，`routes.py` 自动加 `?v=<mtime>`；新增文件放在 `static/` 根。
 3. Basecoat 的按钮默认态 = `.btn` 不带 `data-variant`；**不要**写 `data-variant="default"`。
 4. 颜色/圆角/阴影只准在 `theme.css` 定义；`style.css` 只引用。
-5. JS 渲染的节点必须用 `uiButton` / `uiInput` / `uiSwitch`，不要各处手拼 class。
+5. JS 渲染的节点必须用 `uiButton` / `uiInput` / `uiSelect` / `uiSwitch`，不要各处手拼 class。
 6. 页面不加载任何外部资源；不新增依赖（除非同时更新本文和 `AGENTS.md`）。
 7. 每次改完跑：`pytest tests -q`、`ruff check .`、`python -m app.pluginkit.check plugins`。
 
@@ -357,6 +361,7 @@
 - [ ] 模型/人设切换不整页重渲染、不跳滚动位置
 - [ ] 插件刷新不抽掉现有卡片、不闪骨架
 - [ ] 深色模式全部令牌齐全（含 Basecoat 的 `--card-foreground` 等）
+- [ ] 下拉是 `.ui-select`，不是原生 `<select>`；键盘、勾选、深色、弹窗内不裁切都试过
 - [ ] 动效只碰 transform/opacity；reduced-motion 下静止
 - [ ] 键盘能走完：页签 → 卡片 → 弹窗；焦点可见
 - [ ] 空态/加载/错误三种状态都有

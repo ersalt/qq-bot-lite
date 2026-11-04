@@ -370,9 +370,175 @@ button, input, select, textarea { font: inherit; }
   border-color: var(--primary);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 15%, transparent);
 }
-.input.invalid, .select.invalid, .textarea.invalid {
+.input.invalid, .select.invalid, .textarea.invalid, .ui-select.invalid {
   border-color: var(--danger);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--danger) 14%, transparent);
+}
+
+/* 下拉框：结构参照 SnowLuma 调试台（自绘 trigger + 浮层 + 勾选 + 键盘）。
+   高度/圆角沿用主面板控件，菜单密度照参考组件。 */
+.ui-select {
+  width: 100%;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-ctl);
+  background: var(--card);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  box-shadow: var(--shadow-control);
+  transition: border-color var(--dur-1) var(--ease-out-quart),
+              box-shadow var(--dur-2) var(--ease-out-quart);
+}
+.ui-select:hover {
+  border-color: color-mix(in oklab, var(--text) 18%, var(--input));
+  box-shadow: var(--shadow-control-hover);
+}
+.ui-select[aria-expanded="true"] {
+  box-shadow: var(--shadow-control-open);
+}
+.ui-select:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--shadow-focus);
+}
+.ui-select:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.ui-select-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-select-value.is-placeholder { color: var(--key); }
+.ui-select-chevron {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--muted);
+  transition: transform var(--dur-2) var(--ease-spring-soft);
+}
+.ui-select[aria-expanded="true"] .ui-select-chevron { transform: rotate(180deg); }
+
+.ui-select-menu {
+  position: fixed;
+  z-index: 70;
+  width: max-content;
+  min-width: 0;
+  max-width: calc(100vw - 16px);
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-pop);
+  transform-origin: top left;
+  animation: ui-select-in var(--dur-2) var(--ease-out-quart);
+}
+.ui-select-menu[data-placement="top"] {
+  transform-origin: bottom left;
+  animation-name: ui-select-in-top;
+}
+.ui-select-list {
+  position: relative;
+  max-height: 216px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  outline: none;
+  scrollbar-gutter: stable;
+}
+.ui-select-active {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform var(--dur-2) var(--ease-spring-soft),
+              opacity var(--dur-1) var(--ease-out-quart);
+}
+.ui-select-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+.ui-select-option.is-active { color: var(--primary-ink); }
+.ui-select-option[aria-disabled="true"] { color: color-mix(in oklab, var(--muted) 65%, transparent); }
+.ui-select-option-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-select-option-hint {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.ui-select-check {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-left: 8px;
+  opacity: 0;
+  transform: scale(.7);
+  transition: opacity var(--dur-1) var(--ease-out-quart),
+              transform var(--dur-2) var(--ease-spring-soft);
+}
+.ui-select-option[aria-selected="true"] .ui-select-check {
+  opacity: 1;
+  transform: scale(1);
+}
+.ui-select-empty {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@keyframes ui-select-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ui-select-in-top {
+  from { opacity: 0; transform: translateY(6px) scale(.97); }
+  to { opacity: 1; transform: none; }
 }
 :root[data-theme="dark"] .input:not([role="switch"]):hover,
 :root[data-theme="dark"] .select:hover,
@@ -728,6 +894,8 @@ details.card .card-pad { padding-top: 4px; }
   overflow: hidden;
 }
 .modal[open] { animation: dialog-in var(--dur-3) var(--ease-spring-soft); }
+/* 下拉浮层挂在 dialog 里，打开时让 dialog 别再裁掉它 */
+.modal.select-open { overflow: visible; }
 .modal::backdrop {
   background: oklch(0% 0 0/.35);
   animation: fade-in var(--dur-2) var(--ease-out-quart);

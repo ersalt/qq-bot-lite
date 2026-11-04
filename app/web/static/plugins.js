@@ -707,26 +707,22 @@ function buildDialogField(field, value, host) {
     wrap.append(row);
     read = () => input.checked;
   } else if (field.type === "options" && Array.isArray(field.options) && field.options.length) {
-    const select = document.createElement("select");
-    select.className = "select";
-    select.id = `p-${field.key}`;
     const labels = Array.isArray(field.labels) ? field.labels : [];
     const current = value === null || value === undefined ? "" : String(value);
-    let known = false;
-    field.options.forEach((option, index) => {
-      const node = document.createElement("option");
-      node.value = String(option);
-      node.textContent = labels[index] || String(option);
-      if (String(option) === current) known = true;
-      select.append(node);
-    });
-    if (!known && current) {
-      const node = document.createElement("option");
-      node.value = current;
-      node.textContent = current;
-      select.append(node);
+    const items = field.options.map((option, index) => ({
+      value: String(option),
+      label: labels[index] || String(option),
+    }));
+    if (current && !items.some((item) => item.value === current)) {
+      items.push({ value: current, label: current });
     }
-    select.value = current;
+    const select = uiSelect({
+      id: `p-${field.key}`,
+      label: field.label || field.key,
+      value: current,
+      items,
+      disabled: Boolean(field.disabled),
+    });
     wrap.append(select);
     read = () => select.value;
   } else if (field.multiline) {

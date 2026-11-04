@@ -74,6 +74,7 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
    生成速度从 62 t/s 掉到 22 t/s。
 3. **没有构建链。** 前端是纯原生 JS + 本地内置的 [Basecoat](https://basecoatui.com)（`static/basecoat.css`）。
    按钮/输入框走它的类名和 `data-variant`；默认态**不要**写 `data-variant="default"`（会匹配不到、变透明）。
+   表单下拉框用 `uiSelect`（`static/ui.js`），不要手写原生 `<select>`。
    **界面规范在 `docs/ui-spec.md`，改界面前先读；令牌只准在 `theme.css` 定义，`style.css` 只引用。**
 4. **插件只从项目内 `plugins/` 加载**，`[extensions] dirs` 留空。插件是独立仓库，源码在项目外，
    部署副本放在 `plugins/<id>/`（主仓库 `.gitignore` 已忽略，副本里有 `.deployed.json` 记录版本提交）。
@@ -104,6 +105,8 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
   “他引用了你”模型猜不到指的是哪句。见 `pipeline._quoted_info`。
 - **`body` 不能设 `overflow-x: hidden`**：它会变成没有滚动范围的滚动容器，滚轮被吃掉，
   整页滚不动（进阶设置展开后最明显）。`html`/`body` 一律 `overflow-x: clip`。
+- **下拉框统一用 `uiSelect`**：原生 `<select>` 在弹窗里没法做浮层/勾选，而且 Basecoat 的 preflight
+  会把原生控件边框抹掉。`uiSelect` 在弹窗内会把浮层挂到 `dialog` 上，避免被 `overflow` 裁切。
 - `python -m app.pluginkit.check` 在 GBK 控制台会因 `✓` 编码报错：先
   `$env:PYTHONIOENCODING = "utf-8"` 再跑（不是代码问题）。
 - **移动目录 / 重启前先停进程**，否则 `.venv`、`data/*.db` 被占用。
