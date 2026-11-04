@@ -97,6 +97,11 @@ class PluginManifest:
         }
 
 
+def valid_name(name: str) -> bool:
+    """插件 id 是否合法：只允许字母数字下划线，且不能是隐藏/模板目录。"""
+    return bool(_ID_RE.match(name)) and not name.startswith((".", "_"))
+
+
 def discover(root: Path) -> list[str]:
     """`plugins/` 下带 plugin.toml 的文件夹就是插件。"""
     if not root.exists():

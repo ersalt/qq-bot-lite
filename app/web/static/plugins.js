@@ -88,10 +88,26 @@ function pluginsPanel() {
   const wrap = el("div", "plugins");
   const bar = el("div", "plugins-head");
   const info = el("span", "plugins-count", "读取中");
+
+  const tools = el("div", "plugins-actions");
+  const install = uiButton("安装 ZIP", { variant: "outline", size: "sm" });
+  install.type = "button";
+  install.title = "ZIP 里必须是 <插件id>/plugin.toml";
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = ".zip,application/zip";
+  picker.hidden = true;
+  install.addEventListener("click", () => picker.click());
+  picker.addEventListener("change", () => {
+    const file = picker.files?.[0];
+    if (file) installPlugin(file, install, picker);
+  });
+
   const refresh = uiButton("刷新", { variant: "outline", size: "sm" });
   refresh.type = "button";
   refresh.addEventListener("click", () => loadPlugins(true));
-  bar.append(info, refresh);
+  tools.append(install, refresh, picker);
+  bar.append(info, tools);
   wrap.append(bar);
 
   const grid = el("div", "plugin-grid");
@@ -100,6 +116,43 @@ function pluginsPanel() {
 
   setTimeout(loadPlugins, 0);
   return wrap;
+}
+
+async function installPlugin(file, button, picker) {
+  if (!file.name.toLowerCase().endsWith(".zip")) {
+    toast("只支持 .zip 文件", "bad");
+    picker.value = "";
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    toast("ZIP 不能超过 8MB", "bad");
+    picker.value = "";
+    return;
+  }
+  button.disabled = true;
+  const label = button.textContent;
+  button.textContent = "安装中…";
+  try {
+    const response = await fetch("/api/plugins/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/zip" },
+      body: file,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      toast(data.message || "安装失败", "bad");
+      return;
+    }
+    PLUGINS.items = data.plugins || [];
+    paintPlugins(PLUGINS.items);
+    toast(data.message || "已安装，记得在卡片上启用");
+  } catch (error) {
+    toast(`安装失败：${error.message}`, "bad");
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+    picker.value = "";
+  }
 }
 
 async function loadPlugins(force = false) {

@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..config import Config
+from ..pluginkit.archive import MAX_ZIP, InstallError, install_zip
 from ..pluginkit.manifest import read_manifest
 from ..pluginkit.registry import ExtensionRegistry
 from ..pluginkit.settings_store import defaults_from
@@ -87,6 +88,32 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
     @app.get("/api/plugins")
     async def list_plugins() -> JSONResponse:
         return JSONResponse({"plugins": registry.list_plugins(), "enabled": list(registry.enabled)})
+
+    @app.post("/api/plugins/install")
+    async def install_plugin(request: Request) -> JSONResponse:
+        """手动安装插件 ZIP。只收单个 <id>/plugin.toml 结构，安装后默认不启用。"""
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and int(length) > MAX_ZIP:
+            return JSONResponse(
+                {"ok": False, "message": f"ZIP 超过 {MAX_ZIP // 1048576}MB 上限"}, status_code=413
+            )
+        data = await request.body()
+        try:
+            name = install_zip(data, registry.plugin_dir)
+        except InstallError as exc:
+            return JSONResponse({"ok": False, "message": str(exc)}, status_code=exc.status)
+        registry.scan()
+        manifest = registry.manifests.get(name)
+        if manifest is None:
+            return JSONResponse({"ok": False, "message": "安装后没有找到插件清单"}, status_code=500)
+        log.info("插件已安装: %s", name)
+        return JSONResponse(
+            {
+                "ok": True,
+                "plugins": registry.list_plugins(),
+                "message": f"已安装「{manifest.display}」（未启用），点卡片开关启用",
+            }
+        )
 
     @app.get("/api/plugins/{name}/readme")
     async def plugin_readme(name: str) -> JSONResponse:

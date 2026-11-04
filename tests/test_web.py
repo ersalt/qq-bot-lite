@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -287,6 +289,109 @@ def test_plugin_delete_with_data_and_enabled_cleanup(tmp_path: Path) -> None:
 
         unknown = client.delete("/api/plugins/nope")
         assert unknown.status_code == 404
+
+
+def _zip_bytes(files: dict[str, str | bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+def test_plugin_zip_install(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "packed/plugin.toml": 'title = "打包插件"\n',
+            "packed/plugin.py": "def setup(ctx):\n    return None\n",
+            "packed/README.md": "# 打包说明\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["ok"] is True
+        assert (plugin_dir / "packed" / "plugin.toml").exists()
+        item = next(p for p in data["plugins"] if p["name"] == "packed")
+        assert item["enabled"] is False
+
+        readme = client.get("/api/plugins/packed/readme")
+        assert readme.status_code == 200
+        assert "打包说明" in readme.json()["text"]
+
+        again = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert again.status_code == 409
+
+
+def test_plugin_zip_rejects_unsafe_paths_and_links(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    base = {"packed/plugin.toml": 'title = "坏包"\n', "packed/plugin.py": "def setup(ctx):\n    return None\n"}
+
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        slip = client.post(
+            "/api/plugins/install",
+            content=_zip_bytes({**base, "../evil.txt": "x"}),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert slip.status_code == 400
+        assert not (tmp_path / "evil.txt").exists()
+
+        absolute = client.post(
+            "/api/plugins/install",
+            content=_zip_bytes({**base, "/abs.txt": "x"}),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert absolute.status_code == 400
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            for name, content in base.items():
+                archive.writestr(name, content)
+            link = zipfile.ZipInfo("packed/link")
+            link.create_system = 3
+            link.external_attr = 0o120777 << 16
+            archive.writestr(link, "/etc/passwd")
+        symlink = client.post(
+            "/api/plugins/install",
+            content=buffer.getvalue(),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert symlink.status_code == 400
+
+        two_roots = client.post(
+            "/api/plugins/install",
+            content=_zip_bytes(
+                {
+                    "a/plugin.toml": 'title = "A"\n',
+                    "a/plugin.py": "def setup(ctx):\n    return None\n",
+                    "b/plugin.toml": 'title = "B"\n',
+                    "b/plugin.py": "def setup(ctx):\n    return None\n",
+                }
+            ),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert two_roots.status_code == 400
+
+        missing = client.post(
+            "/api/plugins/install",
+            content=_zip_bytes({"packed/plugin.py": "def setup(ctx):\n    return None\n"}),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert missing.status_code == 400
 
 
 def test_plugin_reload_unknown(tmp_path: Path) -> None:
