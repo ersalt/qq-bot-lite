@@ -193,6 +193,7 @@ def test_plugins_listed_with_manifest(tmp_path: Path) -> None:
         demo = next(item for item in payload["plugins"] if item["name"] == "demo")
         assert demo["title"] == "演示插件"
         assert demo["panel"] == "/plugins/demo"
+        assert demo["repository"] == "https://github.com/ersalt/qq-bot-lite"
         assert demo["error"] is None
         # 测试用的配置里没有启用任何插件
         assert demo["enabled"] is False
@@ -359,6 +360,48 @@ def test_plugin_zip_root_layout_uses_zip_name(tmp_path: Path) -> None:
         assert (plugin_dir / "root_pack" / "pages" / "index.html").exists()
         item = next(p for p in response.json()["plugins"] if p["name"] == "root_pack")
         assert item["enabled"] is False
+
+
+def test_plugin_zip_root_layout_uses_manifest_id(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "plugin.toml": 'id = "manifest_pack"\ntitle = "清单 id"\n',
+            "plugin.py": "def setup(ctx):\n    return None\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        # 没有文件名提示也能装：id 以 plugin.toml 为准
+        response = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 200, response.text
+        assert (plugin_dir / "manifest_pack" / "plugin.toml").exists()
+
+
+def test_plugin_zip_id_must_match_directory(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "wrong/plugin.toml": 'id = "other"\ntitle = "错位"\n',
+            "wrong/plugin.py": "def setup(ctx):\n    return None\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 400
+        assert "id 与目录名不一致" in response.json()["message"]
+        assert not (plugin_dir / "wrong").exists()
 
 
 def test_plugin_zip_root_layout_requires_name(tmp_path: Path) -> None:

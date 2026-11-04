@@ -75,15 +75,17 @@ plugins/<id>/
 ## 3. 清单：plugin.toml
 
 ```toml
+id = "whale_lexicon"               # 可选；写了必须等于目录名，根目录布局的 ZIP 可用它确定 id
 title = "鲸语汇"                   # 必需，面板和日志里显示的名字
 description = "一句话说明"
 version = "0.4.1"                 # SemVer x.y.z
 author = "贰叔"
+repository = "https://github.com/ersalt/whale_lexicon"  # 可选，卡片上显示 GitHub/仓库链接
 
 api = 1                           # 插件接口版本，默认 1；比主程序新的会拒绝加载
 entry = "plugin.py"               # 可选，默认 plugin.py
 panel = "/plugins/whale_lexicon"  # 可选，写了才显示「打开面板」
-app_version = ">=0.2"             # 可选，不满足只警告，不拦加载
+app_version = ">=0.2"             # 可选，预留给兼容检查；当前只读取，不拦加载
 
 [[config]]                        # 可选，有值才显示「设置」
 key = "enabled"                   # 存进 data/plugin_data/<id>/settings.toml 的键

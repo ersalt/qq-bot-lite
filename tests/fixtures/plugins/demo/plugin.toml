@@ -1,7 +1,9 @@
 title = "演示插件"
+id = "demo"
 description = "测试用的最小插件。"
 version = "0.1.0"
 author = "test"
+repository = "https://github.com/ersalt/qq-bot-lite"
 panel = "/plugins/demo"
 
 [[config]]

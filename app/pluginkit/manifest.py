@@ -71,6 +71,7 @@ class PluginManifest:
     description: str = ""
     version: str = "0.0.0"
     author: str = ""
+    repository: str = ""
     config: list[dict[str, Any]] = field(default_factory=list)
     panel: str | None = None
     api: int = SUPPORTED_API
@@ -89,6 +90,7 @@ class PluginManifest:
             "description": self.description,
             "version": self.version,
             "author": self.author,
+            "repository": self.repository,
             "config": self.config,
             "panel": self.panel,
             "api": self.api,
@@ -135,6 +137,20 @@ def read_manifest(root: Path, name: str) -> PluginManifest:
     except (OSError, tomllib.TOMLDecodeError) as exc:
         return PluginManifest(name=name, error=f"{META_FILE} 读不了：{exc}")
 
+    declared_id = str(raw.get("id") or "").strip()
+    if declared_id:
+        if not valid_name(declared_id):
+            return PluginManifest(name=name, error=f"id 不合法：{declared_id}")
+        if declared_id != name:
+            return PluginManifest(
+                name=name,
+                error=f"id 与目录名不一致：plugin.toml 写的是 {declared_id}，目录是 {name}",
+            )
+
+    repository = str(raw.get("repository") or "").strip()
+    if repository and not repository.startswith(("https://", "http://")):
+        repository = ""
+
     entry = str(raw.get("entry") or ENTRY_FILE)
     if not entry_path(root, name, entry).exists():
         return PluginManifest(name=name, error=f"缺少 {entry}")
@@ -159,6 +175,7 @@ def read_manifest(root: Path, name: str) -> PluginManifest:
         description=str(raw.get("description") or ""),
         version=str(raw.get("version") or "0.0.0"),
         author=str(raw.get("author") or ""),
+        repository=repository,
         config=[item for item in config if isinstance(item, dict) and item.get("key")],
         panel=str(raw["panel"]) if raw.get("panel") else None,
         api=api,

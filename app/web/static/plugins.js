@@ -29,6 +29,16 @@ function pluginCard(plugin) {
   titleRow.append(el("span", "plugin-ver", "v" + plugin.version));
   titleBox.append(titleRow);
   if (plugin.author) titleBox.append(el("span", "plugin-author", plugin.author));
+  if (plugin.repository) {
+    const repo = document.createElement("a");
+    repo.className = "plugin-repo";
+    repo.href = plugin.repository;
+    repo.target = "_blank";
+    repo.rel = "noopener noreferrer";
+    repo.textContent = plugin.repository.includes("github.com") ? "GitHub" : "仓库";
+    repo.title = plugin.repository;
+    titleBox.append(repo);
+  }
   top.append(titleBox);
 
   const toggle = document.createElement("input");

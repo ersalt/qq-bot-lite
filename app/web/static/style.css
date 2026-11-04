@@ -672,6 +672,15 @@ details.card .card-pad { padding-top: 4px; }
 }
 .plugin-ver { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); font-weight: 400; flex: none; }
 .plugin-author { display: block; font-size: 11px; color: var(--muted); }
+.plugin-repo {
+  display: block;
+  width: fit-content;
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color var(--dur-1) var(--ease-out-quart);
+}
+.plugin-repo:hover { color: var(--primary-ink); text-decoration: underline; }
 .plugin-desc {
   margin: 0;
   font-size: 12.5px;

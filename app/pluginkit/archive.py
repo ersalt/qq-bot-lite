@@ -6,6 +6,7 @@ import io
 import re
 import stat
 import tempfile
+import tomllib
 import zipfile
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
@@ -67,6 +68,31 @@ def _id_from_hint(hint: str | None) -> str | None:
     return candidate if valid_name(candidate) else None
 
 
+def _declared_id(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> str | None:
+    """根目录布局先读 plugin.toml 里的 id；它比 ZIP 文件名更权威。"""
+    if info.file_size > 256 * 1024:
+        raise InstallError("plugin.toml 超过 256KB，拒绝安装")
+    try:
+        payload = archive.read(info)
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise InstallError(f"读取 plugin.toml 失败：{exc}") from exc
+    if len(payload) > 256 * 1024:
+        raise InstallError("plugin.toml 超过 256KB，拒绝安装")
+    try:
+        data = tomllib.loads(payload.decode("utf-8-sig"))
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise InstallError(f"plugin.toml 读不了：{exc}") from exc
+    value = data.get("id")
+    if value is None:
+        return None
+    value = str(value).strip()
+    if not value:
+        return None
+    if not valid_name(value):
+        raise InstallError(f"plugin.toml 的 id 不合法：{value}")
+    return value
+
+
 def install_zip(data: bytes, plugins_root: Path, name_hint: str | None = None) -> str:
     """校验并安装一个插件 ZIP，返回插件 id。
 
@@ -119,7 +145,10 @@ def install_zip(data: bytes, plugins_root: Path, name_hint: str | None = None) -
         if has_root_meta:
             if folder_meta:
                 raise InstallError("ZIP 同时有根目录和文件夹里的 plugin.toml，结构不明确")
-            root = _id_from_hint(name_hint)
+            meta_info = next(
+                info for info, pure in files if pure.as_posix() == META_FILE
+            )
+            root = _declared_id(archive, meta_info) or _id_from_hint(name_hint)
             if root is None:
                 raise InstallError(
                     "根目录布局需要把 ZIP 命名为 <插件id>.zip（或加 ?name=<插件id>）"
