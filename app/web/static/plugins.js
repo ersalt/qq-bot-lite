@@ -163,10 +163,6 @@ function openInstallDialog() {
   const head = document.createElement("header");
   const titleRow = el("div", "dialog-title-row");
   titleRow.append(el("h2", null, "安装插件 ZIP"));
-  const close = uiButton("×", { variant: "ghost", size: "icon" });
-  close.setAttribute("aria-label", "关闭");
-  close.addEventListener("click", closeDialog);
-  titleRow.append(close);
   head.append(titleRow);
   head.append(el("p", null, "压缩包里只能有一个顶层插件目录"));
   box.append(head);
@@ -388,10 +384,6 @@ function openDeleteDialog(plugin) {
   const head = document.createElement("header");
   const titleRow = el("div", "dialog-title-row");
   titleRow.append(el("h2", null, "删除插件"));
-  const close = uiButton("×", { variant: "ghost", size: "icon" });
-  close.setAttribute("aria-label", "关闭");
-  close.addEventListener("click", closeDialog);
-  titleRow.append(close);
   head.append(titleRow);
   head.append(el("p", null, `${plugin.title} · ${plugin.name}`));
   box.append(head);
@@ -511,17 +503,24 @@ function buildReadmeDialog(plugin, data) {
   const head = document.createElement("header");
   const titleRow = el("div", "dialog-title-row");
   titleRow.append(el("h2", null, `文档 · ${plugin.title}`));
-  const close = uiButton("×", { variant: "ghost", size: "icon" });
-  close.setAttribute("aria-label", "关闭");
-  close.addEventListener("click", closeDialog);
-  titleRow.append(close);
   head.append(titleRow);
   const meta = `${plugin.name} / ${data.filename}${data.truncated ? "（内容过长，已截断）" : ""}`;
   head.append(el("p", null, meta));
   box.append(head);
 
   const body = document.createElement("section");
-  body.append(el("pre", "readme-body", data.text || "（空文件）"));
+  const content = el("div", "md-body");
+  if (data.html) {
+    // 服务端已经过 markdown + nh3 白名单清洗；这里只负责挂上去
+    content.innerHTML = data.html;
+    content.querySelectorAll("a").forEach((link) => {
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    });
+  } else {
+    content.append(el("pre", "readme-body", data.text || "（空文件）"));
+  }
+  body.append(content);
   box.append(body);
 
   const foot = document.createElement("footer");
@@ -570,10 +569,6 @@ function buildPluginDialog(plugin, fields, values) {
   const head = document.createElement("header");
   const titleRow = el("div", "dialog-title-row");
   titleRow.append(el("h2", null, plugin.title));
-  const close = uiButton("×", { variant: "ghost", size: "icon" });
-  close.setAttribute("aria-label", "关闭");
-  close.addEventListener("click", closeDialog);
-  titleRow.append(close);
   head.append(titleRow);
   if (plugin.description) head.append(el("p", null, plugin.description));
   panelBox.append(head);

@@ -61,7 +61,7 @@ plugins/<id>/
   core/            可选，纯逻辑，不 import app.*
   tools/           可选，运维脚本（导入导出之类）
   tests/           可选，pytest，用主程序同一个 venv
-  README.md        建议，用法 + 截图
+  README.md        建议，用法（Markdown；面板不加载图片，截图不会显示）
   CHANGELOG.md     建议，按版本记
   docs/            可选，截图等
 ```
@@ -286,7 +286,8 @@ COMMANDS = [Command("mycmd", handler=handle, help="说明", admin=True)]
 主面板的插件页现在可以直接管理插件：
 
 - **文档**：读插件根目录的 `README.md`（大小写不敏感，`readme.markdown` / `.txt` 也行），
-  超过 256KB 截断；弹窗按原文展示，不渲染 HTML。
+  超过 256KB 截断；弹窗按 Markdown 渲染（标题/列表/表格/代码块），服务端白名单清洗，
+  不加载图片、不执行脚本。
 - **安装 ZIP**：点「安装 ZIP」先开拖放弹窗，把包拖进去或点拖放区选文件；压缩包里只能有
   一个顶层目录，结构是 `<插件id>/plugin.toml`。拒绝绝对路径、`..`、反斜杠、符号链接、加密包；
   压缩包 ≤8MB，解压后 ≤64MB。装完默认**不启用**。
@@ -406,7 +407,7 @@ strategy:
 - [ ] 停用 → 启用，钩子不重复挂；进程退出没有残留任务
 - [ ] 断网 / 模型挂掉 / 数据库锁住，插件不把主流程拖死
 - [ ] 日志里没有 API key、完整聊天记录
-- [ ] `README` 有用法和截图，`CHANGELOG` 有这一版，`LICENSE` 在
+- [ ] `README` 有用法（Markdown），`CHANGELOG` 有这一版，`LICENSE` 在
 
 ---
 

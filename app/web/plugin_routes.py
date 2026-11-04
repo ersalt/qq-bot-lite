@@ -16,6 +16,7 @@ from ..pluginkit.archive import MAX_ZIP, InstallError, install_zip
 from ..pluginkit.manifest import read_manifest
 from ..pluginkit.registry import ExtensionRegistry
 from ..pluginkit.settings_store import defaults_from
+from .markdown_render import render_markdown
 
 log = logging.getLogger(__name__)
 
@@ -133,12 +134,18 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
         except OSError as exc:
             return JSONResponse({"ok": False, "message": f"读取失败：{exc}"}, status_code=500)
         text = raw[:README_LIMIT].decode("utf-8", errors="replace").lstrip("\ufeff")
+        try:
+            html = render_markdown(text)
+        except Exception:  # noqa: BLE001 - 渲染失败退回纯文本，不能拖垮面板
+            log.exception("README 渲染失败: %s", name)
+            html = ""
         return JSONResponse(
             {
                 "ok": True,
                 "name": name,
                 "filename": path.name,
                 "text": text,
+                "html": html,
                 "truncated": len(raw) > README_LIMIT,
             }
         )

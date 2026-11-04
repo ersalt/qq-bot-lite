@@ -719,8 +719,18 @@ details.card .card-pad { padding-top: 4px; }
   animation: fade-in var(--dur-2) var(--ease-out-quart);
 }
 
-/* README 是 Markdown 原文，窄了没法读；单独放宽 */
-.dialog.readme { width: min(880px, calc(100vw - 48px)); }
+/* README 是 Markdown 原文，单独放宽；比设置弹窗明显大一圈 */
+.dialog.readme { width: min(1080px, calc(100vw - 16px)); }
+@media (max-width: 720px) {
+  .dialog.readme {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .dialog.readme .dialog-panel { height: 100%; max-height: none; }
+}
 .dialog-panel { display: flex; flex-direction: column; min-height: 0; max-height: 86vh; }
 .dialog-panel > header { padding: 16px 20px 10px; }
 .dialog-panel > header h2 { margin: 0; font-size: 15px; font-weight: 600; }
@@ -849,6 +859,83 @@ details.card .card-pad { padding-top: 4px; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Markdown 渲染后的正文 */
+.md-body {
+  max-width: 940px;
+  margin: 0 auto;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--text);
+}
+.md-body > :first-child { margin-top: 0; }
+.md-body > :last-child { margin-bottom: 0; }
+.md-body h1,
+.md-body h2,
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  margin: 1.35em 0 .55em;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -.01em;
+}
+.md-body h1 { font-size: 22px; }
+.md-body h2 { font-size: 18px; }
+.md-body h3 { font-size: 15.5px; }
+.md-body h4,
+.md-body h5,
+.md-body h6 { font-size: 14px; }
+.md-body p { margin: 0 0 .9em; }
+.md-body ul,
+.md-body ol { margin: 0 0 .9em; padding-left: 1.5em; }
+.md-body li + li { margin-top: .25em; }
+.md-body code {
+  font-family: var(--font-mono);
+  font-size: .92em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--muted) 10%, var(--card));
+}
+.md-body pre {
+  margin: 0 0 1em;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--canvas) 55%, var(--card));
+  overflow: auto;
+}
+.md-body pre code {
+  padding: 0;
+  background: none;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.md-body blockquote {
+  margin: 0 0 1em;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid color-mix(in oklab, var(--primary) 35%, var(--border));
+  color: var(--muted);
+}
+.md-body table {
+  width: 100%;
+  margin: 0 0 1em;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.md-body th,
+.md-body td {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.md-body th { background: var(--hairline); font-weight: 500; }
+.md-body a { color: var(--primary-ink); text-decoration: none; }
+.md-body a:hover { text-decoration: underline; }
+.md-body hr { margin: 1.4em 0; border: 0; border-top: 1px solid var(--border); }
+.md-body strong { color: var(--text); }
 
 /* ---------- 页脚 ---------- */
 
