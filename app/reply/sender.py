@@ -19,6 +19,10 @@ from ..onebot.protocol import at_segment, reply_segment, text_segment
 log = logging.getLogger(__name__)
 
 _CQ_RE = re.compile(r"\[CQ:[^\]]*\]")
+# 历史标注漏进输出的兜底：「（回 「贰叔」）」只是上下文，不是回复内容。
+_REPLY_PREFIX_RE = re.compile(
+    r"^\s*[（(]\s*回\s*[「“\"]?[^」”\"）)\n]{1,40}[」”\"]?\s*[）)]\s*"
+)
 # 模型写的提及：统一用 "at 昵称"，兼容旧写法 "@昵称"。
 # 尾巴上的 "(QQ号)" 必须一起吃掉：历史里存的就是 "at 名字(123456)"，模型会照着学，
 # 只匹配名字的话括号里的号会当正文留下来，发出去就成了 "at 贰叔(10001) (10001)"。
@@ -48,8 +52,9 @@ def _message_id(data: Any) -> str | None:
 
 
 def clean_text(text: str, bot_name: str) -> str:
-    """模型偶尔会自己写 @ 或 CQ 码，这里兜底清掉，避免发出半截语法。"""
+    """模型偶尔会自己写 @、CQ 码或历史标注，这里兜底清掉。"""
     text = _CQ_RE.sub("", text)
+    text = _REPLY_PREFIX_RE.sub("", text)
     text = text.replace("\u200b", "")
     if bot_name:
         text = re.sub(rf"^\s*{re.escape(bot_name)}\s*[:：]\s*", "", text)

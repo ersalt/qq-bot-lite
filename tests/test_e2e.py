@@ -226,7 +226,9 @@ async def test_reply_links_to_trigger_and_history_shows_addressee(tmp_path: Path
         await asyncio.sleep(0.2)
 
     sent = json.dumps(state.requests[1]["messages"], ensure_ascii=False)
-    assert "（回 「阿伟」）" in sent
+    assert "「阿伟」:" in sent
+    body = [item for item in state.requests[1]["messages"] if item["role"] != "system"]
+    assert all("（回" not in str(item.get("content", "")) for item in body)
     assert "<system_reminder>" in sent
     assert "「路人」: 插话" in sent
 

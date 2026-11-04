@@ -153,20 +153,21 @@ def test_keep_addressed_falls_back_for_old_rows():
     assert [item.id for item in kept] == [2, 3]
 
 
-def test_build_history_marks_assistant_addressee():
+def test_build_history_strips_old_reply_prefix():
     messages = [
         _msg(1, "user", "问它", speaker="alice"),
-        _msg(2, "assistant", "回答", reply_to=1),
+        _msg(2, "assistant", "（回 「alice」）回答", reply_to=1),
     ]
     history = build_history(messages, ContextConfig(), is_group=True)
     assert "「alice」: 问它" in history[0]["content"]
-    assert history[1]["content"] == "（回 「alice」）回答"
+    assert history[1]["content"] == "回答"
 
-    # 触发消息不在窗口里时不硬编一个名字
-    outside = build_history(
-        [_msg(3, "assistant", "回答", reply_to=99)], ContextConfig(), is_group=True
-    )
-    assert outside[0]["content"] == "回答"
+
+def test_clean_text_strips_reply_prefix():
+    from app.reply.sender import clean_text
+
+    assert clean_text("（回 「贰叔」）才不馋", "小鲸鱼") == "才不馋"
+    assert clean_text('(回 "Bob") hello', "bot") == "hello"
 
 
 def test_store_persists_reply_link(tmp_path):

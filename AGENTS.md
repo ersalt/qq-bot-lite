@@ -95,6 +95,8 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
   最新对话就进不了窗口，模型会“三句就忘”。回归测试见 `tests/test_context_window.py`。
 - **历史配对必须用 `assistant.reply_to`**：不要用“紧挨着 assistant 的 user”，群里插话
   会把回复算到别人头上；老数据没有 reply_to 时才退回相邻逻辑。见 `app/context/window.py`。
+- **别把「（回 ...）」写进 assistant 内容**：模型会照抄成回复格式；历史里不写，`clean_text`
+  和 `_render` 负责清掉旧数据/漏出来的前缀。
 - **群聊闲话不塞持久历史**：用 `_ambient_context` 取“上次 assistant 之后”的消息，作为
   `<system_reminder>` 注入当前 user 内容；持久历史只留 reply_to 配对的问答。
 - **引用消息要带原文**：`get_msg` 取发送者/文本/图片，放 `<Quoted Message>`；只靠

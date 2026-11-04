@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import re
 from typing import Any
 
 from ..config import ContextConfig
@@ -14,13 +15,20 @@ def _stamp(message: StoredMessage) -> str:
     return _dt.datetime.fromtimestamp(message.created_at).strftime("%H:%M")
 
 
+_REPLY_PREFIX_RE = re.compile(
+    r"^\s*[（(]\s*回\s*[「“\"]?[^」”\"）)\n]{1,40}[」”\"]?\s*[）)]\s*"
+)
+
+
 def _render(
     message: StoredMessage,
     is_group: bool,
     timestamps: bool,
-    addressee: str | None = None,
 ) -> str:
     text = message.content.strip()
+    if message.role == "assistant":
+        # 老数据里可能存着「（回 昵称）」标注；历史里清掉，否则模型会照学。
+        text = _REPLY_PREFIX_RE.sub("", text)
     if not text:
         # 纯图片消息也要在历史里占一行，否则模型不知道那时候发过图。
         return "[图片]" if getattr(message, "images", None) else ""
@@ -28,8 +36,6 @@ def _render(
         speaker = message.speaker or (str(message.user_id) if message.user_id else "某人")
         prefix = f"[{_stamp(message)}] " if timestamps else ""
         return f"{prefix}「{speaker}」: {text}"
-    if message.role == "assistant" and is_group and addressee:
-        return f"（回 「{addressee}」）{text}"
     return text
 
 
@@ -133,19 +139,11 @@ def build_history(
     budget_override: int | None = None,
 ) -> list[dict[str, Any]]:
     """messages 为从旧到新的顺序，返回同样顺序的 chat messages（不含当前这条）。"""
-    by_id = {message.id: message for message in messages}
     items: list[dict[str, Any]] = []
     for message in messages:
         if message.role == "assistant" and not cfg.include_bot_replies:
             continue
-        addressee = None
-        if message.role == "assistant" and message.reply_to:
-            trigger = by_id.get(message.reply_to)
-            if trigger is not None:
-                addressee = trigger.speaker or (
-                    str(trigger.user_id) if trigger.user_id else None
-                )
-        text = _render(message, is_group, cfg.timestamps, addressee=addressee)
+        text = _render(message, is_group, cfg.timestamps)
         if not text:
             continue
         item: dict[str, Any] = {"role": message.role, "content": text}
