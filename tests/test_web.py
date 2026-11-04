@@ -196,6 +196,56 @@ def test_plugins_listed_with_manifest(tmp_path: Path) -> None:
         assert demo["enabled"] is False
 
 
+def test_plugin_hot_reload_and_stop(tmp_path: Path) -> None:
+    root = tmp_path / "plugins" / "hot"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text('title = "热重载"\n', encoding="utf-8")
+    (root / "plugin.py").write_text(
+        "from pathlib import Path\n"
+        "from app.pluginkit.registry import Extension\n"
+        "HERE = Path(__file__).parent\n"
+        "(HERE / 'loads.txt').open('a', encoding='utf-8').write('x')\n"
+        "class Hot(Extension):\n"
+        "    name = 'hot'\n"
+        "    def on_stop(self):\n"
+        "        (HERE / 'stopped.txt').write_text('stopped', encoding='utf-8')\n"
+        "def setup(ctx):\n"
+        "    return Hot()\n",
+        encoding="utf-8",
+    )
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        enabled = client.post("/api/plugins/hot/enabled", json={"enabled": True})
+        assert enabled.status_code == 200, enabled.text
+        loads = root / "loads.txt"
+        assert loads.read_text(encoding="utf-8") == "x"
+
+        # 重载必须重新执行模块（含子模块缓存要清掉），并先跑 on_stop
+        reloaded = client.post("/api/plugins/hot/reload")
+        assert reloaded.status_code == 200, reloaded.text
+        data = reloaded.json()
+        assert data["ok"] is True, data
+        assert loads.read_text(encoding="utf-8") == "xx"
+        assert (root / "stopped.txt").exists()
+        item = next(p for p in data["plugins"] if p["name"] == "hot")
+        assert item["enabled"] is True
+
+        # 停用也要走 on_stop，而不是把扩展悄悄丢掉
+        (root / "stopped.txt").unlink()
+        off = client.post("/api/plugins/hot/enabled", json={"enabled": False})
+        assert off.status_code == 200, off.text
+        assert (root / "stopped.txt").exists()
+
+
+def test_plugin_reload_unknown(tmp_path: Path) -> None:
+    (tmp_path / "plugins").mkdir()
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        response = client.post("/api/plugins/nope/reload")
+        assert response.status_code == 404
+
+
 def test_plugin_readme_and_missing(tmp_path: Path) -> None:
     client, _ = _client(tmp_path, plugin_dir=FIXTURE_PLUGINS)
     with client:

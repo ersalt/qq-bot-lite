@@ -138,6 +138,36 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
             }
         )
 
+    @app.post("/api/plugins/{name}/reload")
+    async def reload_plugin(name: str) -> JSONResponse:
+        """重载单个插件的代码与设置。router 的增删仍要重启进程。"""
+        if not registry.manifests:
+            registry.scan()
+        if name not in registry.manifests:
+            raise HTTPException(status_code=404, detail="插件不存在")
+        try:
+            await registry.reload(name)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("插件重载失败: %s", name)
+            return JSONResponse({"ok": False, "message": f"重载失败：{exc}"}, status_code=500)
+        mount_plugin_routers(app, registry)
+        manifest = registry.manifests.get(name)
+        error = registry.errors.get(name) or (manifest.error if manifest else None)
+        title = manifest.display if manifest else name
+        if error:
+            message = f"已重载「{title}」，但加载失败：{error}"
+        else:
+            message = f"已重载「{title}」；如果改过 router，需要重启进程"
+        log.info("插件重载: %s%s", name, f" 失败: {error}" if error else "")
+        return JSONResponse(
+            {
+                "ok": not error,
+                "plugins": registry.list_plugins(),
+                "restart": False,
+                "message": message,
+            }
+        )
+
     @app.get("/api/plugins/{name}/settings")
     async def read_settings(name: str) -> JSONResponse:
         """打开设置弹窗时现算一遍字段：插件可以在这里补动态选项。"""

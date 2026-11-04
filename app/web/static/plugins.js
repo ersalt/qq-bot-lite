@@ -69,6 +69,11 @@ function pluginCard(plugin) {
     }
     actions.append(link);
   }
+  const reload = uiButton("重载", { variant: "outline", size: "sm" });
+  reload.type = "button";
+  reload.addEventListener("click", () => reloadPlugin(plugin, reload));
+  actions.append(reload);
+
   if (!actions.childElementCount) actions.append(el("span", "plugin-hint", "没有可调项"));
   card.append(actions);
   return card;
@@ -182,8 +187,26 @@ function emptyPlugins() {
   return box;
 }
 
-async function togglePlugin(plugin, enabled, input) {
-  input.disabled = true;
+async function reloadPlugin(plugin, button) {
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.name)}/reload`, {
+      method: "POST",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (Array.isArray(data.plugins)) {
+      PLUGINS.items = data.plugins;
+      paintPlugins(PLUGINS.items);
+    }
+    toast(data.message || (data.ok ? "已重载" : "重载失败"), data.ok ? "ok" : "bad");
+  } catch (error) {
+    toast(`重载失败：${error.message}`, "bad");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function togglePlugin(plugin, enabled, input) {  input.disabled = true;
   try {
     const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.name)}/enabled`, {
       method: "POST",

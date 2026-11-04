@@ -260,12 +260,51 @@ class ExtensionRegistry:
                 await extension.ctx.shutdown()
         self.extensions.clear()
 
+    async def unload(self, name: str) -> None:
+        """停掉一个插件：on_stop → 取消它的后台任务 → 摘掉钩子/路由/命令/模块缓存。
+
+        不碰别的插件，热重载和删除都走这里。子模块也要一起从 sys.modules 摘掉，
+        否则 `from .core import ...` 会拿到旧代码。
+        """
+        for extension in list(self.extensions):
+            ctx = getattr(extension, "ctx", None)
+            if getattr(ctx, "name", None) != name:
+                continue
+            await self._lifecycle(extension, "on_stop", name)
+            if ctx is not None:
+                await ctx.shutdown()
+            self.extensions.remove(extension)
+
+        self.routers.pop(name, None)
+        self.pages.pop(name, None)
+        self.commands = {
+            alias: entry for alias, entry in self.commands.items() if entry[0] != name
+        }
+        self.errors.pop(name, None)
+
+        prefix = f"qqbotlite_plugin_{name}"
+        for module_name in [
+            module for module in sys.modules if module == prefix or module.startswith(prefix + ".")
+        ]:
+            sys.modules.pop(module_name, None)
+
+    async def reload(self, name: str) -> None:
+        """重载单个插件：重扫清单，再按启用状态重新加载。router 变更仍需重启。"""
+        await self.unload(name)
+        self.scan()
+        if name in self.enabled:
+            await self._load_one(name)
+
     async def set_enabled(self, name: str, enabled: bool) -> None:
         if enabled and name not in self.enabled:
             self.enabled.append(name)
         elif not enabled and name in self.enabled:
             self.enabled.remove(name)
-        await self.load()
+        # 只动这一个插件：别的插件和它们的后台任务不受影响
+        await self.unload(name)
+        self.scan()
+        if enabled:
+            await self._load_one(name)
 
     def update_settings(self, name: str, values: dict[str, Any]) -> dict[str, Any]:
         manifest = self.manifests.get(name) or read_manifest(self.root_of(name), name)
