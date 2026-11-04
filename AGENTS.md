@@ -60,7 +60,8 @@ app/
   config.py           dataclass 配置 + TOML 读写（写回保留注释）
 plugins/              插件（只从这里加载；_template 是骨架）
 personas/             人设 Markdown
-docs/                 local-first.md（定位与实测）、plugin.md（插件开发）、log-spec.md（日志格式）
+docs/                 local-first.md（定位与实测）、plugin.md（插件开发）、log-spec.md（日志格式）、
+                      ui-spec.md（界面契约：令牌/骨架/组件/动效/验收）
 ```
 
 ## 不能碰的设计
@@ -72,6 +73,7 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
    生成速度从 62 t/s 掉到 22 t/s。
 3. **没有构建链。** 前端是纯原生 JS + 本地内置的 [Basecoat](https://basecoatui.com)（`static/basecoat.css`）。
    按钮/输入框走它的类名和 `data-variant`；默认态**不要**写 `data-variant="default"`（会匹配不到、变透明）。
+   **界面规范在 `docs/ui-spec.md`，改界面前先读；令牌只准在 `theme.css` 定义，`style.css` 只引用。**
 4. **插件只从项目内 `plugins/` 加载**，`[extensions] dirs` 留空。插件是独立仓库，源码在项目外，
    部署副本放在 `plugins/<id>/`（主仓库 `.gitignore` 已忽略，副本里有 `.deployed.json` 记录版本提交）。
 5. 配置写回是**逐行改**，不是整份重写——注释必须保留。
@@ -87,6 +89,12 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
 ## 常见坑
 
 - **改版本号忘了改 CHANGELOG 标题** → `test_changelog_has_entry_for_current_version` 挂。
+- **上下文窗口取数必须用 `latest_after()`**：`after()` 是最早优先，历史一超过上限
+  最新对话就进不了窗口，模型会“三句就忘”。回归测试见 `tests/test_context_window.py`。
+- **`body` 不能设 `overflow-x: hidden`**：它会变成没有滚动范围的滚动容器，滚轮被吃掉，
+  整页滚不动（进阶设置展开后最明显）。`html`/`body` 一律 `overflow-x: clip`。
+- `python -m app.pluginkit.check` 在 GBK 控制台会因 `✓` 编码报错：先
+  `$env:PYTHONIOENCODING = "utf-8"` 再跑（不是代码问题）。
 - **移动目录 / 重启前先停进程**，否则 `.venv`、`data/*.db` 被占用。
 - `start.cmd` 里是 `timeout` 不是 `pause`：优雅退出（exit 0）时窗口自己关，强杀最多留 10 秒。
 - 面板静态资源走 `/static/<name>`，`routes.py` 会给它加 `?v=<mtime>`；**放在子目录里匹配不到**，
@@ -112,6 +120,7 @@ D:\Dev\
 ## 当前状态（2026-11-04）
 
 - `v0.2.0` 已发布：https://github.com/ersalt/qq-bot-lite/releases/tag/v0.2.0
-- 界面已换 Basecoat；文档已瘦身成三份（local-first / plugin / log-spec）。
+- 面板已按 `docs/ui-spec.md` 重排：顶栏 + 页头 + 页内页签 + 白卡行式，动效见规范第 7 节。
+- 文档四份：local-first / plugin / log-spec / ui-spec。
 - 本机运行时：机器人在跑，LM Studio 加载 `qwen3.8-27b`（32768 ctx），SnowLuma 反连 8790。
 - 插件部署模型：源码 `D:\Dev\whale_lexicon` → `tools/deploy-to-bot.ps1` → `plugins/whale_lexicon`。

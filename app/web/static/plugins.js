@@ -1,5 +1,5 @@
-/* 插件页的前端片段。
-   单独放在一个文件里，免得 app.js 继续膨胀；由 render() 调用。 */
+/* 插件页：卡片 + 设置弹窗。由 app.js 的 render() 调用。
+   文档/删除/重载/ZIP 安装的入口在下一步接上。 */
 
 const PLUGINS = {
   loading: false,
@@ -18,11 +18,11 @@ function pluginLogo(title) {
 
 function pluginCard(plugin) {
   const card = document.createElement("article");
-  card.className = "plugin-card";
+  card.className = "card plugin";
   if (plugin.error) card.classList.add("bad");
 
-  const head = el("div", "plugin-head");
-  head.append(pluginLogo(plugin.title));
+  const top = el("div", "plugin-top");
+  top.append(pluginLogo(plugin.title));
 
   const titleBox = el("div", "plugin-title");
   const titleRow = el("div", "plugin-title-row");
@@ -30,28 +30,21 @@ function pluginCard(plugin) {
   titleRow.append(el("span", "plugin-ver", "v" + plugin.version));
   titleBox.append(titleRow);
   if (plugin.author) titleBox.append(el("span", "plugin-author", plugin.author));
-  head.append(titleBox);
+  top.append(titleBox);
 
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.className = "switch-btn";
-  toggle.setAttribute("role", "switch");
-  toggle.setAttribute("aria-checked", String(Boolean(plugin.enabled)));
-  toggle.setAttribute("aria-label", `启用 ${plugin.title}`);
+  const toggle = document.createElement("input");
+  toggle.type = "checkbox";
+  toggle.role = "switch";
+  toggle.className = "input";
+  toggle.checked = Boolean(plugin.enabled);
   toggle.disabled = Boolean(plugin.error);
-  if (plugin.enabled) toggle.classList.add("on");
-  toggle.append(el("span", "track"));
-  toggle.addEventListener("click", () => {
-    if (toggle.disabled) return;
-    const next = !toggle.classList.contains("on");
-    toggle.classList.toggle("on", next);
-    toggle.setAttribute("aria-checked", String(next));
-    togglePlugin(plugin, next, toggle);
-  });
-  head.append(toggle);
-  card.append(head);
+  toggle.setAttribute("aria-label", `启用 ${plugin.title}`);
+  toggle.addEventListener("change", () => togglePlugin(plugin, toggle.checked, toggle));
+  top.append(toggle);
+  card.append(top);
 
   card.append(el("p", "plugin-desc", plugin.error || plugin.description || "没有写说明。"));
+  if (plugin.last_error) card.append(el("p", "plugin-hint", plugin.last_error));
 
   const actions = el("div", "plugin-actions");
   if (plugin.config?.length) {
@@ -78,7 +71,7 @@ function pluginCard(plugin) {
 
 function pluginsPanel() {
   const wrap = el("div", "plugins");
-  const bar = el("div", "plugins-bar");
+  const bar = el("div", "plugins-head");
   const info = el("span", "plugins-count", "读取中");
   const refresh = uiButton("刷新", { variant: "outline", size: "sm" });
   refresh.type = "button";
@@ -101,38 +94,63 @@ async function loadPlugins(force = false) {
     paintPlugins(PLUGINS.items);
     return;
   }
-  grid.textContent = "";
-  for (let i = 0; i < 3; i += 1) {
-    const row = el("div", "skeleton-row");
-    row.append(el("div", "skeleton"));
-    row.append(el("div", "skeleton"));
-    grid.append(row);
+
+  // 手动刷新时不抽掉已有卡片：整块淡下去，回来再淡上来，避免闪一行骨架
+  const hasCards = Boolean(grid.querySelector(".plugin"));
+  const count = document.querySelector(".plugins-count");
+  if (hasCards) {
+    grid.classList.add("is-refreshing");
+    grid.setAttribute("aria-busy", "true");
+    if (count) count.textContent = "刷新中…";
+  } else {
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 3; i += 1) {
+      const row = el("div", "skeleton-row");
+      row.append(el("div", "skeleton"));
+      row.append(el("div", "skeleton"));
+      frag.append(row);
+    }
+    grid.replaceChildren(frag);
   }
+
   try {
     const response = await fetch("/api/plugins");
     const data = await response.json();
     PLUGINS.items = data.plugins || [];
     paintPlugins(PLUGINS.items);
   } catch (error) {
-    grid.textContent = "";
-    grid.append(el("div", "alert", `读取插件失败：${error.message}`));
+    if (hasCards) {
+      toast(`刷新失败：${error.message}`, "bad");
+    } else {
+      grid.replaceChildren(el("div", "card blank-card", `读取插件失败：${error.message}`));
+    }
+  } finally {
+    grid.classList.remove("is-refreshing");
+    grid.removeAttribute("aria-busy");
   }
 }
 
 function paintPlugins(items) {
   const grid = $("plugin-grid");
   if (!grid) return;
-  grid.textContent = "";
   const count = document.querySelector(".plugins-count");
   const on = items.filter((item) => item.enabled).length;
   if (count) count.textContent = `${items.length} 个插件 · ${on} 个已启用`;
-
-  if (!items.length) {
-    grid.append(emptyPlugins());
-    return;
+  const tabCount = $("plugin-count");
+  if (tabCount) {
+    tabCount.textContent = String(items.length);
+    // 计数会让页签变宽，正在选中时把 ink 重新贴一下
+    if (typeof moveInk === "function") moveInk(false);
   }
-  for (const plugin of items) grid.append(pluginCard(plugin));
-  openDeepLinkPlugin(items);
+
+  const frag = document.createDocumentFragment();
+  if (!items.length) {
+    frag.append(emptyPlugins());
+  } else {
+    for (const plugin of items) frag.append(pluginCard(plugin));
+  }
+  grid.replaceChildren(frag);
+  if (items.length) openDeepLinkPlugin(items);
 }
 
 // /?plugin=<id> 直接打开某个插件的设置：面板里的插件卡片可以这么链过来
@@ -147,24 +165,20 @@ function openDeepLinkPlugin(items) {
 }
 
 function emptyPlugins() {
-  const box = el("div", "plugin-card plugin-empty");
+  const box = el("div", "card plugin plugin-empty");
   box.append(el("h3", null, "还没有插件"));
   box.append(
     el(
       "p",
       "plugin-desc",
-      "在 app/extensions/ 下放一个 .py，导出 MANIFEST 就会被这里发现。带 config 的插件会多一个“设置”按钮，挂上 router 就会多一个“打开面板”。",
+      "把插件目录放到 plugins/ 下，或从插件仓库部署一份；刷新后这里就会出现。带 config 的插件会多一个「设置」按钮，挂上 router 就会多一个「打开面板」。",
     ),
   );
-  const link = uiButton("看写插件说明", { variant: "outline", size: "sm", href: "#" });
-  link.href = "https://github.com/";
-  link.addEventListener("click", (event) => event.preventDefault());
-  box.append(link);
   return box;
 }
 
-async function togglePlugin(plugin, enabled, button) {
-  button.disabled = true;
+async function togglePlugin(plugin, enabled, input) {
+  input.disabled = true;
   try {
     const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.name)}/enabled`, {
       method: "POST",
@@ -173,27 +187,23 @@ async function togglePlugin(plugin, enabled, button) {
     });
     const data = await response.json();
     if (!response.ok || !data.ok) {
-      button.classList.toggle("on", !enabled);
+      input.checked = !enabled;
       toast(data.message || "切换失败", "bad");
       return;
     }
     PLUGINS.items = data.plugins || PLUGINS.items;
     paintPlugins(PLUGINS.items);
     toast(data.message || "已切换");
-    const restart = $("restart-notice");
-    if (restart) restart.hidden = true;
   } catch (error) {
-    button.classList.toggle("on", !enabled);
+    input.checked = !enabled;
     toast(`切换失败：${error.message}`, "bad");
   } finally {
-    button.disabled = false;
+    input.disabled = false;
   }
 }
 
 /* ---------- 设置弹窗 ---------- */
 
-/* 字段从 /api/plugins/<id>/settings 现拿：插件可以在这里补动态选项
-   （比如本机装了哪些模型）。拿不到就用列表里带的那份兜底。 */
 async function openPluginDialog(plugin) {
   let fields = plugin.config || [];
   let values = plugin.settings || {};
@@ -217,7 +227,7 @@ function buildPluginDialog(plugin, fields, values) {
   panel.id = "dialog";
   panel.className = "dialog";
   panel.addEventListener("click", (event) => {
-    if (event.target === panel) closeDialog();  // 点遮罩关闭
+    if (event.target === panel) closeDialog();
   });
 
   const panelBox = el("div", "dialog-panel");
@@ -235,10 +245,8 @@ function buildPluginDialog(plugin, fields, values) {
   const body = document.createElement("section");
   const controls = {};
   if (!fields.length) {
-    // 插件把设置全放自己页面里了（settings_fields 返回空列表）
     body.append(el("p", "hint", "这个插件没有通用设置项，参数在它自己的页面里调。"));
   }
-  // 按 group 分块：字段多了以后平铺一屏根本找不到
   const groups = [];
   for (const field of fields) {
     const key = field.group || "";
@@ -261,7 +269,7 @@ function buildPluginDialog(plugin, fields, values) {
   }
   panelBox.append(body);
 
-  // show_if：依赖项没打开时把子选项藏起来（比如 wiki_enable 关掉就别管同步时间）
+  // show_if：依赖项没打开时把子选项藏起来
   const applyConditions = () => {
     for (const field of fields) {
       const condition = field.show_if;
@@ -277,11 +285,11 @@ function buildPluginDialog(plugin, fields, values) {
   applyConditions();
 
   const foot = document.createElement("footer");
-  // 愿意自己画界面的插件，设置弹窗里留个口子过去
   if (plugin.panel) {
     const link = uiButton("打开插件页面", { variant: "outline", size: "sm", href: plugin.panel });
     link.target = "_blank";
     link.rel = "noopener";
+    link.classList.add("dialog-link");
     foot.append(link);
   }
   const cancel = uiButton("取消", { variant: "outline" });
@@ -291,14 +299,14 @@ function buildPluginDialog(plugin, fields, values) {
   save.type = "button";
   if (!fields.length) save.hidden = true;
   save.addEventListener("click", async () => {
-    const values = {};
-    for (const [key, control] of Object.entries(controls)) values[key] = control();
+    const payload = {};
+    for (const [key, control] of Object.entries(controls)) payload[key] = control();
     save.disabled = true;
     try {
       const response = await fetch(`/api/plugins/${encodeURIComponent(plugin.name)}/settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ values }),
+        body: JSON.stringify({ values: payload }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -318,7 +326,9 @@ function buildPluginDialog(plugin, fields, values) {
   panelBox.append(foot);
   panel.append(panelBox);
   document.body.append(panel);
+  panel.tabIndex = -1;
   panel.showModal();
+  panel.focus();
 }
 
 function buildDialogField(field, value, host) {
@@ -326,7 +336,6 @@ function buildDialogField(field, value, host) {
   wrap.dataset.field = field.key;
   const head = el("div", "field-head");
   const label = document.createElement("label");
-  label.className = "label";
   label.textContent = field.label || field.key;
   label.htmlFor = `p-${field.key}`;
   head.append(label, el("span", "key", field.key));
@@ -349,7 +358,6 @@ function buildDialogField(field, value, host) {
     wrap.append(row);
     read = () => input.checked;
   } else if (field.type === "options" && Array.isArray(field.options) && field.options.length) {
-    // 下拉框：选项和显示名分开给，值仍然是原始字符串
     const select = document.createElement("select");
     select.className = "select";
     select.id = `p-${field.key}`;
@@ -404,8 +412,3 @@ function closeDialog() {
   if (typeof node.close === "function") node.close();
   node.remove();
 }
-
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeDialog();
-});
-

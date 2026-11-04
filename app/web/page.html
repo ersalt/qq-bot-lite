@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#f4f7fb">
+<meta name="theme-color" content="#f9fcfe">
 <title>qq-bot-lite 设置</title>
 <script>
   (function () {
@@ -13,51 +13,57 @@
       var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
       var theme = query === "dark" || query === "light" ? query : saved || (prefersDark ? "dark" : "light");
       document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.style.colorScheme = theme;
       // Basecoat 认 .dark 类，跟着我们的 data-theme 一起切
       document.documentElement.classList.toggle("dark", theme === "dark");
       var meta = document.querySelector('meta[name="theme-color"]');
-      if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0f1a" : "#f4f7fb");
+      if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0f1a" : "#f9fcfe");
     } catch (error) {}
   })();
 </script>
 <!-- 组件库：Basecoat（本地内置，无外部请求） -->
 <link rel="stylesheet" href="/static/basecoat.css">
-<link rel="stylesheet" href="/static/style.css">
 <link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="page">
 
-  <header class="head">
-    <div class="brand">
-      <span class="brand-name">qq-bot-lite</span>
-      <span class="brand-ver">v__VERSION__</span>
+<header class="topbar" id="topbar">
+  <div class="brand">qq-bot-lite <span class="ver">v__VERSION__</span></div>
+  <span class="tb-sep"></span>
+  <span class="tb-scope">设置</span>
+  <div class="tb-right">
+    <span class="stat mono" id="stat-line"></span>
+    <span class="conn" id="conn">
+      <i class="dot" id="conn-dot"></i>
+      <span id="conn-text">读取中</span>
+    </span>
+    <div class="tb-tools">
+      <button class="tb-btn" id="theme" type="button" aria-label="切换主题">◐</button>
+      <button class="tb-btn" id="full" type="button" aria-label="全屏">⛶</button>
     </div>
-    <div class="head-right">
-      <div class="status" id="conn">
-        <span class="dot" id="conn-dot"></span>
-        <span id="conn-text">读取中</span>
-        <span class="status-sep"></span>
-        <span class="mono" id="stat-line"></span>
-      </div>
-      <button class="icon-btn" id="theme" type="button" aria-label="切换主题">◐</button>
-    </div>
-  </header>
+  </div>
+</header>
 
-  <nav class="pillbar" id="nav" role="tablist" aria-label="设置分组"></nav>
-
-  <div class="toolbar">
-    <div class="toolbar-text">
+<main class="page">
+  <div class="head">
+    <div class="head-text">
       <h1 id="page-title">设置</h1>
-      <p id="page-sub">改动即时写回 config/config.toml</p>
+      <p class="sub" id="page-sub">改动即时写回 config/config.toml</p>
     </div>
-    <div class="toolbar-actions">
-      <button class="btn" data-variant="outline" id="reload" type="button" disabled>放弃改动</button>
-      <button class="btn" id="save" type="button" disabled>保存</button>
+    <div class="head-actions" id="actions">
+      <span class="dirty-label" id="dirty-label" hidden></span>
+      <button class="btn" data-variant="outline" id="reload" type="button">放弃改动</button>
+      <button class="btn" id="save" type="button">保存</button>
     </div>
   </div>
 
-  <div class="alert" id="restart-notice" hidden></div>
+  <nav class="tabbar" id="tabs" aria-label="设置分组"></nav>
+
+  <div class="notice" id="restart-notice" hidden>
+    <span class="notice-mark">!</span>
+    <span id="restart-text"></span>
+  </div>
 
   <form id="form" class="form" autocomplete="off">
     <div id="sections"></div>
@@ -67,7 +73,7 @@
     <span>配置来源 <code>config/config.toml</code><span id="foot-meta"></span></span>
     <span id="foot-state">未加载</span>
   </footer>
-</div>
+</main>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

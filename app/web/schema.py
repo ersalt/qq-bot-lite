@@ -189,11 +189,11 @@ SECTIONS: list[dict[str, Any]] = [
         "fields": [
             _f(
                 "context.max_messages",
-                "最近消息条数",
+                "接过的消息条数",
                 "number",
                 min=10,
                 max=500,
-                help="锚点窗口会把它浮动在 60%~125% 之间，不是每条都挪",
+                help="只算它接过的轮次；锚点窗口在 60%~125% 之间浮动，40 条约 20 轮",
             ),
             _f(
                 "context.max_tokens",

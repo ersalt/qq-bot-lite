@@ -1,4 +1,5 @@
-/* 设置面板前端：纯原生，无构建链。 */
+/* 设置面板前端：纯原生，无构建链。
+   骨架：顶栏 + 页头 + 页内页签 + 平级白卡 + 设置行。规范见 docs/ui-spec.md。 */
 
 const state = {
   schema: [],
@@ -29,26 +30,28 @@ function toast(message, kind = "ok") {
   }, 2600);
 }
 
-/* ---------- 渲染 ---------- */
+const reducedMotion = () =>
+  window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function buildField(field, value) {
-  const wrap = el("div", "field");
-  wrap.dataset.key = field.key;
+/* ---------- 字段 ---------- */
 
-  const head = el("div", "field-head");
-  const label = el("label", "label", field.label);
+function buildRow(field, value) {
+  const row = el("div", "row");
+  const head = el("div", "row-head");
+  const label = el("label", null, field.label);
   label.htmlFor = `f-${field.key}`;
   head.append(label, el("span", "key", field.key));
-  if (field.restart) {
-    const badge = el("span", "badge", "需重启");
-    badge.dataset.variant = "secondary";
-    head.append(badge);
-  }
-  wrap.append(head);
+  if (field.restart) head.append(el("span", "tag", "需重启"));
+  row.append(head);
 
+  if (field.help) row.append(el("p", "hint", field.help));
+
+  const ctl = el("div", "row-ctl");
   let control;
+
   if (field.type === "bool") {
-    const row = el("div", "switch-row");
+    ctl.classList.add("tight");
+    const wrap = el("div", "switch-row");
     const input = document.createElement("input");
     input.type = "checkbox";
     input.role = "switch";
@@ -58,10 +61,11 @@ function buildField(field, value) {
     const mark = el("span", "state", input.checked ? "开" : "关");
     input.addEventListener("change", () => {
       mark.textContent = input.checked ? "开" : "关";
-      onEdit(field, input.checked);
+      onEdit(field);
     });
-    row.append(input, mark);
-    control = row;
+    wrap.append(input, mark);
+    ctl.append(wrap);
+    control = input;
   } else if (field.type === "select") {
     const select = document.createElement("select");
     select.className = "select";
@@ -73,7 +77,8 @@ function buildField(field, value) {
       select.append(node);
     }
     select.value = value === null || value === undefined ? "" : String(value);
-    select.addEventListener("change", () => onEdit(field, select.value));
+    select.addEventListener("change", () => onEdit(field));
+    ctl.append(select);
     control = select;
   } else {
     const input = document.createElement("input");
@@ -94,68 +99,83 @@ function buildField(field, value) {
     } else {
       input.value = String(value);
     }
-    input.addEventListener("input", () => onEdit(field, input.value));
+    input.addEventListener("input", () => onEdit(field));
+    ctl.append(input);
     control = input;
   }
 
-  wrap.append(control);
-
-  if (field.help) wrap.append(el("p", "hint", field.help));
   const err = el("p", "err");
   err.dataset.for = field.key;
-  wrap.append(err);
-  return wrap;
+  ctl.append(err);
+  row.append(ctl);
+  return row;
 }
 
+function rowsOf(fields) {
+  const box = el("div", "rows");
+  for (const field of fields) box.append(buildRow(field, state.values[field.key]));
+  return box;
+}
+
+function plainSection(section) {
+  const card = el("section", "card");
+  const pad = el("div", "card-pad");
+  pad.append(rowsOf(section.fields));
+  card.append(pad);
+  return card;
+}
+
+/* ---------- 渲染 ---------- */
+
 function render() {
+  const tabs = $("tabs");
   const host = $("sections");
+  tabs.textContent = "";
   host.textContent = "";
-  const nav = $("nav");
-  nav.textContent = "";
 
   for (const section of state.schema) {
-    // Basecoat 的 tabs 语义：role=tab + aria-selected，外观仍是我们那枚浮动胶囊
-    const chip = el("button", "chip");
-    chip.type = "button";
-    chip.role = "tab";
-    chip.id = `tab-${section.id}`;
-    chip.dataset.section = section.id;
-    chip.setAttribute("aria-controls", `sec-${section.id}`);
-    chip.setAttribute("aria-selected", "false");
-    chip.append(el("span", null, section.title));
-    chip.append(el("span", "dirty-dot"));
-    chip.addEventListener("click", (event) => {
-      event.preventDefault();
-      showSection(section.id);
-    });
-    nav.append(chip);
+    const tab = el("button", "tabbtn");
+    tab.type = "button";
+    tab.id = `tab-${section.id}`;
+    tab.dataset.section = section.id;
+    tab.setAttribute("aria-controls", `sec-${section.id}`);
+    tab.setAttribute("aria-current", "false");
+    tab.append(el("span", null, section.title));
+    if (section.id === "plugins") {
+      const count = el("span", "count", "0");
+      count.id = "plugin-count";
+      tab.append(count);
+    }
+    tab.append(el("i", "tab-dot"));
+    tab.addEventListener("click", () => showSection(section.id));
+    tabs.append(tab);
 
-    const block = el("section", "panel");
-    block.id = `sec-${section.id}`;
-    block.role = "tabpanel";
-    block.setAttribute("aria-labelledby", `tab-${section.id}`);
-    block.dataset.section = section.id;
-    block.hidden = true;
+    const panel = el("section", "panel");
+    panel.id = `sec-${section.id}`;
+    panel.dataset.section = section.id;
+    panel.setAttribute("role", "region");
+    panel.setAttribute("aria-labelledby", tab.id);
+    panel.hidden = true;
 
     if (section.id === "plugins") {
-      block.classList.add("panel-flush");
-      block.append(pluginsPanel());
+      panel.append(pluginsPanel());
     } else if (section.id === "llm") {
-      block.append(modelPanel(section));
+      panel.append(modelPanel(section));
     } else if (section.id === "persona") {
-      block.append(personaPanel(section));
+      panel.append(personaPanel(section));
     } else {
-      const grid = el("div", "grid");
-      for (const field of section.fields) {
-        grid.append(buildField(field, state.values[field.key]));
-      }
-      block.append(grid);
-      extras(section, block);
+      panel.append(plainSection(section));
     }
-    host.append(block);
+    host.append(panel);
   }
 
+  const ink = el("span", "tab-ink");
+  ink.id = "tab-ink";
+  ink.setAttribute("aria-hidden", "true");
+  tabs.append(ink);
+
   showSection(validSection(state.active) || state.schema[0]?.id);
+  refreshDirtyUi();
 }
 
 function validSection(id) {
@@ -173,145 +193,89 @@ function savedSection() {
 function showSection(id) {
   const target = validSection(id);
   if (!target) return;
+  const previous = state.active;
   state.active = target;
 
   for (const panel of document.querySelectorAll("#sections > section")) {
     const active = panel.dataset.section === target;
     panel.hidden = !active;
-    if (active) {
-      panel.removeAttribute("data-anim");
-      void panel.offsetWidth;
-      panel.setAttribute("data-anim", "in");
+    if (active && previous && previous !== target && !reducedMotion()) {
+      const order = state.schema.map((item) => item.id);
+      const dir = order.indexOf(target) > order.indexOf(previous) ? 1 : -1;
+      panel.animate(
+        [
+          { opacity: 0, transform: `translateX(${dir * 10}px)` },
+          { opacity: 1, transform: "none" },
+        ],
+        { duration: 220, easing: "cubic-bezier(.16, 1, .3, 1)" },
+      );
     }
   }
-  for (const chip of document.querySelectorAll("#nav [role=tab]")) {
-    const on = chip.dataset.section === target;
-    chip.classList.toggle("active", on);
-    chip.setAttribute("aria-selected", on ? "true" : "false");
-    chip.tabIndex = on ? 0 : -1;
+
+  for (const tab of document.querySelectorAll("#tabs .tabbtn")) {
+    const on = tab.dataset.section === target;
+    tab.setAttribute("aria-current", on ? "page" : "false");
+    tab.tabIndex = on ? 0 : -1;
   }
 
   const section = state.schema.find((item) => item.id === target);
-  const actions = document.querySelector(".toolbar-actions");
-  if (actions) actions.hidden = target === "plugins" || target === "persona";
-  $("page-title").textContent = section ? section.title : "设置";
-  $("page-sub").textContent = section?.desc || "改动即时写回 config/config.toml";
+  const title = $("page-title");
+  const sub = $("page-sub");
+  if (title && sub) {
+    const paint = () => {
+      title.textContent = section ? section.title : "设置";
+      sub.textContent = section?.desc || "改动即时写回 config/config.toml";
+    };
+    paint();
+    if (!reducedMotion() && previous && previous !== target) {
+      for (const node of [title, sub]) {
+        node.animate(
+          [
+            { opacity: 0, transform: "translateY(2px)" },
+            { opacity: 1, transform: "none" },
+          ],
+          { duration: 200, easing: "cubic-bezier(.16, 1, .3, 1)" },
+        );
+      }
+    }
+  }
+
+  const actions = $("actions");
+  // 人设页保留配置级保存（兜底昵称在配置里），正文另有自己的「保存人设」
+  if (actions) actions.hidden = target === "plugins";
 
   try {
     localStorage.setItem("qqbotlite-section", target);
     history.replaceState(null, "", `#${target}`);
   } catch (error) {}
+  moveInk(previous !== null && previous !== target);
+  // 面板刚显示时实体卡才有尺寸，下一帧再贴选中框
+  requestAnimationFrame(() => {
+    if (typeof refreshEntityInk === "function") refreshEntityInk();
+  });
   window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
 }
 
-/* ---------- 各组的额外挂件 ---------- */
-
-function extras(section, block) {
-  if (section.id === "llm") block.append(llmCheckRow());
-  if (section.id === "persona") block.append(personaEditor());
-}
-
-function llmCheckRow() {
-  const row = el("div", "checkrow");
-  const button = uiButton("测试连接", { variant: "outline" });
-  button.type = "button";
-  const result = el("span", "checkresult", "");
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    result.textContent = "探测中";
-    result.className = "checkresult";
-    try {
-      const response = await fetch("/api/llm/check");
-      const data = await response.json();
-      result.className = `checkresult ${data.ok && data.loaded ? "ok" : data.ok ? "warn" : "bad"}`;
-      const latency = data.latency_ms !== undefined ? ` · ${data.latency_ms}ms` : "";
-      result.textContent = `${data.message}${latency}`;
-    } catch (error) {
-      result.className = "checkresult bad";
-      result.textContent = `探测失败：${error.message}`;
-    } finally {
-      button.disabled = false;
-    }
-  });
-  row.append(button, result);
-  return row;
-}
-
-function personaEditor() {
-  const box = el("div", "editor");
-  const head = el("div", "editor-head");
-  head.append(el("span", "editor-title", "人设正文"));
-  const path = el("span", "key", "");
-  const counter = el("span", "key", "");
-  const save = uiButton("保存人设");
-  save.type = "button";
-  head.append(path, counter, save);
-
-  const area = document.createElement("textarea");
-  area.className = "textarea";
-  area.id = "persona-text";
-  area.spellcheck = false;
-  area.rows = 16;
-  area.placeholder = "人设 Markdown 正文";
-
-  const hint = el("p", "hint", "改完点保存即时生效，不用重启。人设里写死篇幅能直接决定回复长度和思考量。");
-
-  box.append(head, area, hint);
-
-  const refreshCounter = () => {
-    counter.textContent = `${area.value.length} 字`;
-  };
-  area.addEventListener("input", refreshCounter);
-
-  save.addEventListener("click", async () => {
-    save.disabled = true;
-    try {
-      const response = await fetch("/api/persona", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: area.value }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        toast(data.message || "人设保存失败", "bad");
-        return;
-      }
-      toast(`人设已保存并生效（${data.chars} 字）`);
-      refreshCounter();
-    } catch (error) {
-      toast(`人设保存失败：${error.message}`, "bad");
-    } finally {
-      save.disabled = false;
-    }
-  });
-
-  fetch("/api/persona")
-    .then((response) => response.json())
-    .then((data) => {
-      area.value = data.text || "";
-      path.textContent = data.path || "";
-      refreshCounter();
-    })
-    .catch(() => {
-      hint.textContent = "读取人设失败";
-    });
-
-  return box;
-}
-
-function fieldMeta(key) {
-  for (const section of state.schema) {
-    for (const field of section.fields) {
-      if (field.key === key) return { field, section };
-    }
+function moveInk(animate) {
+  const ink = $("tab-ink");
+  const active = document.querySelector('#tabs [aria-current="page"]');
+  if (!ink || !active) return;
+  const left = active.offsetLeft;
+  const width = active.offsetWidth;
+  if (!animate) ink.style.transition = "none";
+  ink.style.width = `${width}px`;
+  ink.style.transform = `translateX(${left}px)`;
+  if (!animate) {
+    void ink.offsetWidth;
+    ink.style.transition = "";
   }
-  return {};
 }
 
 /* ---------- 编辑 ---------- */
 
 function readControl(field) {
   const input = $(`f-${field.key}`);
+  if (!input) return state.values[field.key];
   if (field.type === "bool") return input.checked;
   const raw = input.value;
   if (field.type === "list") return raw;
@@ -322,23 +286,24 @@ function readControl(field) {
   return raw;
 }
 
-function onEdit(field, _value) {
+function onEdit(field) {
   const value = readControl(field);
   const before = state.original[field.key];
-  const same = JSON.stringify(normalizeForCompare(value, field)) === JSON.stringify(normalizeForCompare(before, field));
+  const same =
+    JSON.stringify(normalizeForCompare(value, field)) ===
+    JSON.stringify(normalizeForCompare(before, field));
   const key = field.key;
   if (same) {
-    if (state.dirty.has(key)) {
-      state.dirty.delete(key);
-      state.values[key] = value;
-    }
+    state.dirty.delete(key);
+    state.values[key] = value;
   } else {
     state.dirty.add(key);
     state.values[key] = value;
   }
   const err = document.querySelector(`.err[data-for="${key}"]`);
   if (err) err.textContent = "";
-  $(`f-${key}`).classList.remove("invalid");
+  const input = $(`f-${key}`);
+  if (input) input.classList.remove("invalid");
   refreshDirtyUi();
 }
 
@@ -359,29 +324,90 @@ function normalizeForCompare(value, field) {
 }
 
 function refreshDirtyUi() {
-  $("save").disabled = state.dirty.size === 0 || state.saving;
-  $("reload").disabled = state.dirty.size === 0 || state.saving;
-  $("foot-state").textContent = state.dirty.size === 0 ? "已同步" : `${state.dirty.size} 项待保存`;
+  const n = state.dirty.size;
+  const label = $("dirty-label");
+  if (label) {
+    label.hidden = n === 0;
+    label.textContent = `${n} 项待保存`;
+  }
+  const save = $("save");
+  if (save) save.disabled = state.saving;
+  const reload = $("reload");
+  if (reload) reload.disabled = n === 0 || state.saving;
+  const foot = $("foot-state");
+  if (foot) foot.textContent = state.saving ? "保存中" : n === 0 ? "已同步" : `${n} 项待保存`;
 
   const perSection = {};
   for (const key of state.dirty) {
     const meta = fieldMeta(key);
     if (meta.section) perSection[meta.section.id] = true;
   }
-  for (const anchor of document.querySelectorAll("#nav a")) {
-    anchor.classList.toggle("dirty", Boolean(perSection[anchor.dataset.section]));
+  for (const tab of document.querySelectorAll("#tabs .tabbtn")) {
+    tab.classList.toggle("dirty", Boolean(perSection[tab.dataset.section]));
   }
 }
 
 /* ---------- 保存 ---------- */
 
+function fieldMeta(key) {
+  for (const section of state.schema) {
+    for (const field of section.fields) {
+      if (field.key === key) return { field, section };
+    }
+  }
+  return {};
+}
+
+/* 不重建 DOM，把当前值写回已有控件（模型/人设切换时用，避免整页闪一下） */
+function syncSectionFields(sectionId) {
+  const section = state.schema.find((item) => item.id === sectionId);
+  if (!section) return;
+  for (const field of section.fields) {
+    const input = $(`f-${field.key}`);
+    if (!input) continue;
+    const value = state.values[field.key];
+    if (field.type === "bool") input.checked = Boolean(value);
+    else if (field.type === "list") input.value = Array.isArray(value) ? value.join(", ") : "";
+    else input.value = value === null || value === undefined ? "" : String(value);
+    input.classList.remove("invalid");
+    const err = document.querySelector(`.err[data-for="${field.key}"]`);
+    if (err) err.textContent = "";
+  }
+}
+
+function flashCards(nodes) {
+  if (reducedMotion()) return;
+  for (const node of nodes || []) {
+    node.animate(
+      [{ opacity: .55 }, { opacity: 1 }],
+      { duration: 200, easing: "cubic-bezier(.16, 1, .3, 1)" },
+    );
+  }
+}
+
+function showNotice(restart) {
+  const node = $("restart-notice");
+  const text = $("restart-text");
+  if (!node || !text) return;
+  if (!restart?.length) {
+    node.hidden = true;
+    return;
+  }
+  text.textContent = `以下设置需要重启进程才生效：${restart.join("、")}`;
+  node.hidden = false;
+}
+
 async function save() {
-  if (state.saving || state.dirty.size === 0) return;
+  if (state.saving) return;
+  if (state.dirty.size === 0) {
+    toast("没有改动");
+    return;
+  }
   state.saving = true;
-  $("save").disabled = true;
-  $("foot-state").textContent = "保存中";
+  refreshDirtyUi();
 
   const updates = {};
+  let firstError = null;
   for (const key of state.dirty) {
     const meta = fieldMeta(key);
     if (!meta.field) continue;
@@ -401,21 +427,21 @@ async function save() {
         if (err) err.textContent = item.message;
         const input = document.getElementById(`f-${item.field}`);
         if (input) input.classList.add("invalid");
+        if (!firstError) firstError = item.field;
       }
       toast(payload.errors?.length ? "有字段不合法，已标红" : "保存失败", "bad");
+      if (firstError) {
+        const meta = fieldMeta(firstError);
+        if (meta.section) showSection(meta.section.id);
+      }
       return;
     }
+
     state.original = { ...payload.values };
     state.values = { ...payload.values };
     state.dirty.clear();
     state.restart = payload.restart || [];
-    const notice = $("restart-notice");
-    if (state.restart.length) {
-      notice.hidden = false;
-      notice.textContent = `以下设置需要重启进程才生效：${state.restart.join("、")}`;
-    } else {
-      notice.hidden = true;
-    }
+
     if (Object.keys(updates).some((key) => key.startsWith("llm."))) {
       fetch("/api/models", {
         method: "POST",
@@ -423,8 +449,10 @@ async function save() {
         body: JSON.stringify({ action: "save" }),
       }).catch(() => {});
     }
+
+    // 不整页重渲染：人设正文是独立编辑区，重渲染会吞掉没保存的草稿
+    showNotice(state.restart);
     toast("已保存并生效");
-    render();
   } catch (error) {
     toast(`保存失败：${error.message}`, "bad");
   } finally {
@@ -451,46 +479,49 @@ async function load() {
       {
         id: "plugins",
         title: "插件",
-        desc: "app/extensions/ 下的每个模块就是一张卡。带 config 的多一个“设置”，挂上 router 的多一个“打开面板”。",
+        desc: "plugins/ 下的每个目录就是一张卡。",
         fields: [],
       },
     ];
     state.values = { ...payload.values };
     state.original = { ...payload.values };
     state.dirty.clear();
-    state.active = validSection(location.hash.slice(1)) || savedSection() || payload.sections[0]?.id;
-    $("foot-meta").textContent = ` · ${payload.sections.length} 组 ${Object.keys(payload.values).length} 项`;
+    state.active =
+      validSection(location.hash.slice(1)) || savedSection() || payload.sections[0]?.id;
+    const meta = $("foot-meta");
+    if (meta) meta.textContent = ` · ${payload.sections.length} 组 ${Object.keys(payload.values).length} 项`;
     render();
-    refreshDirtyUi();
   } catch (error) {
     host.textContent = "";
-    const box = el("div", "alert", `读取配置失败：${error.message}`);
-    host.append(box);
-    $("foot-state").textContent = "加载失败";
+    const card = el("div", "card blank-card", `读取配置失败：${error.message}`);
+    host.append(card);
+    const foot = $("foot-state");
+    if (foot) foot.textContent = "加载失败";
   }
 }
 
-/* ---------- 主题 ---------- */
+/* ---------- 主题 / 顶栏 ---------- */
+
+function paintTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.style.colorScheme = theme;
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0f1a" : "#f9fcfe");
+  const button = $("theme");
+  if (button) {
+    button.textContent = theme === "dark" ? "◑" : "◐";
+    button.title = theme === "dark" ? "切到浅色" : "切到深色";
+  }
+}
 
 function initTheme() {
   const button = $("theme");
   if (!button) return;
-  const paint = (theme) => {
-    document.documentElement.setAttribute("data-theme", theme);
-    try {
-      localStorage.setItem("qqbotlite-theme", theme);
-    } catch (error) {}
-    button.textContent = theme === "dark" ? "◑" : "◐";
-    button.title = theme === "dark" ? "切到浅色" : "切到深色";
-  };
-  paint(document.documentElement.getAttribute("data-theme") || "light");
+  paintTheme(document.documentElement.getAttribute("data-theme") || "light");
   button.addEventListener("click", (event) => {
     const current = document.documentElement.getAttribute("data-theme") || "light";
     const next = current === "dark" ? "light" : "dark";
-    if (typeof document.startViewTransition !== "function") {
-      paint(next);
-      return;
-    }
     const x = event.clientX ?? window.innerWidth / 2;
     const y = event.clientY ?? 40;
     const radius = Math.hypot(Math.max(x, window.innerWidth - x), Math.max(y, window.innerHeight - y));
@@ -498,11 +529,52 @@ function initTheme() {
     root.style.setProperty("--vt-x", x + "px");
     root.style.setProperty("--vt-y", y + "px");
     root.style.setProperty("--vt-r", radius + "px");
-    document.startViewTransition(() => paint(next));
+
+    if (typeof document.startViewTransition !== "function" || reducedMotion()) {
+      paintTheme(next);
+      return;
+    }
+    document.startViewTransition(() => paintTheme(next));
+    button.animate(
+      [{ transform: "rotate(0deg)" }, { transform: "rotate(180deg)" }],
+      { duration: 240, easing: "cubic-bezier(.22, 1.15, .36, 1)" },
+    );
   });
 }
 
-/* ---------- 状态与导航 ---------- */
+function initTopbar() {
+  const bar = $("topbar");
+  if (!bar) return;
+  let ticking = false;
+  const update = () => {
+    bar.classList.toggle("is-scrolled", window.scrollY > 8);
+    ticking = false;
+  };
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    },
+    { passive: true },
+  );
+  update();
+}
+
+function initFullscreen() {
+  const button = $("full");
+  if (!button) return;
+  button.addEventListener("click", () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  });
+}
+
+/* ---------- 状态 ---------- */
 
 async function pollStatus() {
   try {
@@ -510,44 +582,73 @@ async function pollStatus() {
     const data = await response.json();
     const dot = $("conn-dot");
     const online = Boolean(data.connected);
-    dot.className = `dot ${online ? "on" : "off"}`;
-    $("conn-text").textContent = online ? `已连接 ${data.self_id ?? ""}` : "等待 SnowLuma 接入";
+    if (dot) dot.className = `dot ${online ? "on" : "off"}`;
+    const conn = $("conn");
+    if (conn) conn.classList.toggle("off", !online);
+    $("conn-text").textContent = online ? `已连接 ${data.self_id ?? ""}`.trim() : "等待 SnowLuma 接入";
     $("stat-line").textContent = `${data.counters?.received ?? 0} 收 / ${data.counters?.replied ?? 0} 回`;
   } catch {
-    $("conn-dot").className = "dot off";
+    const dot = $("conn-dot");
+    if (dot) dot.className = "dot off";
     $("conn-text").textContent = "状态不可用";
+    const conn = $("conn");
+    if (conn) conn.classList.add("off");
   }
 }
 
-function watchSections() {
-  // 分页之后不再需要滚动联动，保留空实现让老调用点不用改。
-}
+/* ---------- 事件 ---------- */
 
-$("save").addEventListener("click", save);
-$("form").addEventListener("submit", (event) => event.preventDefault());
-$("reload").addEventListener("click", () => {
-  load().then(watchSections);
-  $("restart-notice").hidden = true;
-  toast("已还原为当前生效的配置");
-});
+function initEvents() {
+  $("save").addEventListener("click", save);
+  $("form").addEventListener("submit", (event) => event.preventDefault());
+  $("reload").addEventListener("click", () => {
+    load().then(() => {
+      showNotice([]);
+      toast("已还原为当前生效的配置");
+    });
+  });
 
-document.addEventListener("keydown", (event) => {
-  if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+  document.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+      event.preventDefault();
+      save();
+    }
+    if (event.key === "Escape") closeDialog();
+  });
+
+  $("tabs").addEventListener("keydown", (event) => {
+    const tabs = [...document.querySelectorAll("#tabs .tabbtn")];
+    const current = tabs.findIndex((tab) => tab.getAttribute("aria-current") === "page");
+    let next = null;
+    if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    if (next === null) return;
     event.preventDefault();
-    save();
-  }
-});
-window.addEventListener("beforeunload", (event) => {
-  if (state.dirty.size > 0) event.preventDefault();
-});
+    tabs[next].focus();
+    showSection(tabs[next].dataset.section);
+  });
+
+  window.addEventListener("resize", () => {
+    moveInk(false);
+    refreshEntityInk();
+  });
+  window.addEventListener("beforeunload", (event) => {
+    if (state.dirty.size > 0) event.preventDefault();
+  });
+}
+
+/* ---------- 启动 ---------- */
 
 initTheme();
-load().then(watchSections);
+initTopbar();
+initFullscreen();
+initEvents();
+load().then(() => moveInk(false));
 pollStatus();
 setInterval(pollStatus, 10000);
 
-
-
-
-
-
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") moveInk(false);
+});

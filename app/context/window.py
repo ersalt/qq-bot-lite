@@ -50,6 +50,27 @@ def keep_addressed(messages: list[StoredMessage]) -> list[StoredMessage]:
     return kept
 
 
+def pick_anchor_window(
+    messages: list[StoredMessage], limit: int
+) -> tuple[list[StoredMessage], int | None]:
+    """按 60%~125% 水位挑锚点窗口。
+
+    返回 (窗口, 新锚点)；新锚点为 None 表示还没到上限，不推进。
+    比上限多时一次退到 60%，让前缀稳定一段时间，而不是每条挤掉一条。
+    """
+    hard = max(int(limit * 1.25), 10)
+    if len(messages) <= hard:
+        return messages, None
+    keep_count = max(int(limit * 0.6), 10)
+    start = max(len(messages) - keep_count, 0)
+    # 别从半轮开始：如果切在 assistant 上，把它前面配对的 user 一起带上，
+    # 否则模型会看到一句没头没尾的“自己说过的话”。
+    while start > 0 and messages[start].role == "assistant":
+        start -= 1
+    keep = messages[start:]
+    return keep, keep[0].id - 1
+
+
 def build_history(
     messages: list[StoredMessage],
     cfg: ContextConfig,

@@ -11,7 +11,7 @@ from typing import AsyncIterator, Callable
 
 from ..config import Config
 from ..context.store import MessageStore
-from ..context.window import build_history, keep_addressed
+from ..context.window import build_history, keep_addressed, pick_anchor_window
 from ..llm.client import LLMClient, LLMError, ThinkingBudgetExceeded
 from ..llm.prompt import build_messages, build_system_prompt, scene_line
 from ..llm.tokens import estimate_text_tokens
@@ -584,20 +584,25 @@ class ChatService:
         llama.cpp 只能从零重新预填充（实测 1668 token ≈ 2.5 秒）。
         这里改成按锚点取：窗口从 60% 涨到 125% 才推进一次锚点，
         平时只是往尾部追加，前缀不动，缓存就能复用。
+
+        注意必须取“锚点之后最新的 N 条”，不能取最早的 N 条：
+        `store.after()` 是最早优先，历史一旦超过上限，窗口就会停在旧消息上，
+        最新的对话根本进不来（实测落后 431 条，模型看起来像鱼的记忆）。
         """
         limit = max(self.cfg.context.max_messages, 20)
         hard = int(limit * 1.25)
         anchor = self._anchors.get(session, 0)
-        messages = self.store.after(session, anchor, hard + 1)
+        # latest_after 的 headroom 要明显大于上限；平时 prune 只留 200 条左右，
+        # 这里给 4 倍余量，历史再长也不会把最新的截掉。
+        headroom = max(hard * 4, 512)
+        messages = self.store.latest_after(session, anchor, headroom)
         if self.cfg.context.only_addressed:
             messages = keep_addressed(messages)
-        if len(messages) <= hard:
-            return messages
-
-        keep = messages[-max(int(limit * 0.6), 10) :]
-        self._anchors[session] = keep[0].id - 1
-        log.debug("推进上下文锚点 session=%s 保留 %d 条", session, len(keep))
-        return keep
+        messages, new_anchor = pick_anchor_window(messages, limit)
+        if new_anchor is not None:
+            self._anchors[session] = new_anchor
+            log.debug("推进上下文锚点 session=%s 保留 %d 条", session, len(messages))
+        return messages
 
     async def _quoted_images(self, conn: OneBotConnection, reply_id: str) -> list:
         """用 get_msg 把被引用那条消息里的图捞出来。拿不到就返回空。"""

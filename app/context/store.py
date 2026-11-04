@@ -181,6 +181,21 @@ class MessageStore:
             ).fetchall()
         return [_row_to_message(row) for row in rows]
 
+    def latest_after(self, session: str, after_id: int, limit: int) -> list[StoredMessage]:
+        """取 id > after_id 的**最新** N 条，旧→新返回。
+
+        `after()` 是最早优先；历史超过 limit 时它会停在旧消息上，最新的几条根本进不了
+        窗口。锚点窗口必须用这个，否则模型永远慢几十条（实测落后 431 条）。
+        """
+        if limit <= 0:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM messages WHERE session=? AND id>? ORDER BY id DESC LIMIT ?",
+                (session, after_id, limit),
+            ).fetchall()
+        return [_row_to_message(row) for row in reversed(rows)]
+
     def count(self, session: str | None = None) -> int:
         with self._lock:
             if session is None:
