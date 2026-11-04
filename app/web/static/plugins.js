@@ -1,5 +1,4 @@
-/* 插件页：卡片 + 设置弹窗。由 app.js 的 render() 调用。
-   文档/删除/重载/ZIP 安装的入口在下一步接上。 */
+/* 插件页：卡片 + 设置/文档/删除弹窗 + 重载/ZIP 安装。由 app.js 的 render() 调用。 */
 
 const PLUGINS = {
   loading: false,

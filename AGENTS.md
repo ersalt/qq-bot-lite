@@ -85,6 +85,8 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
   `on_start` / `on_stop` 生命周期。钩子在消息主链路上，必须快进快出（5ms 量级）。
 - `ctx` 提供 `settings` / `data_dir` / `services`（llm, store, service, cfg）/ `spawn` / `log`。
 - 异常隔离：任一钩子抛异常只记 `last_error`，不影响聊天。
+- 面板可看 README、热重载、删除（可选连 `data/plugin_data/<id>/` 一起）、安装 ZIP
+  （只收 `<插件id>/plugin.toml` 单顶层目录，8MB/64MB 上限，装完默认不启用）。
 
 ## 常见坑
 
