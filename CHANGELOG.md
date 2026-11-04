@@ -25,6 +25,7 @@
 - 群聊场景行和历史里的昵称加「」：像“你已被移出群聊”这种昵称不会再被模型当成系统事件。
 - 群聊上下文改成 AstrBot 式两层：持久历史只留配对的问答，群闲聊作为 `<system_reminder>` ambient 一次注入当前消息（800 token 上限），不再污染历史。
 - 引用消息现在带 `<Quoted Message>`（发送者 + 原文/图片）；ambient 里 `at` 自己的消息加 `⚠️[DIRECTED AT YOU]`。
+- 每轮回消息前打一行 info 上下文日志（历史条数/id 范围/ambient 行数/预算/估算 token/图片数）；历史图按每张 320 token 预留预算，不再在裁剪后才塞图。
 - 插件页细调：「设置」排到「文档」前；安装 ZIP 改成拖放弹窗（拖入文件，或点拖放区再开系统文件选择，确认后才上传）。
 - README 弹窗改为 Markdown 渲染（标题/列表/表格/代码块），服务端 `markdown` + `nh3` 白名单清洗，不加载图片、不执行脚本；宽度加到 1080px，≤720px 全屏；插件页四个弹窗去掉右上角 X，关闭走 footer/遮罩/Esc。
 - 修复弹窗一直只有 448px 宽：Basecoat 自带 `.dialog` 组件，会把子元素套成 `position: fixed` / `max-width: 28rem`；插件弹窗改用 `.modal`，README 1080px、其他 560px 才真正生效。

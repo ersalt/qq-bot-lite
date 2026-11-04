@@ -29,6 +29,9 @@ from .trigger import Decision, decide
 
 log = logging.getLogger(__name__)
 
+# 512 边长一张图约 250~400 token；预算按 320 粗估，宁可少塞文本也别让图片把窗口挤爆。
+_HISTORY_IMAGE_TOKENS = 320
+
 
 @dataclass(slots=True)
 class _QuotedInfo:
@@ -327,9 +330,13 @@ class ChatService:
             # 软件侧的硬上限：prompt 再长也不许超过模型窗口的一半，留出生长的余地。
             budget = min(budget, max(int(cap * 0.5), 256))
         history = build_history(
-            history_messages, self.cfg.context, is_group=event.is_group, budget_override=budget
+            history_messages,
+            self.cfg.context,
+            is_group=event.is_group,
+            budget_override=self._history_budget(budget, history_messages, ambient, prepared),
         )
         history = self._attach_history_images(history)
+        self._log_context(event.session_key, budget, history_messages, history, ambient, prepared)
         ctx.history = history
 
         text = _prompt_text(
@@ -583,6 +590,60 @@ class ChatService:
                     name = None
             parts.append(f"{name}({qq})" if name else qq)
         return "、".join(parts)
+
+    def _history_budget(
+        self,
+        budget: int,
+        history_messages: list,
+        ambient: str,
+        prepared: list | None,
+    ) -> int:
+        """给历史图、当前图和 ambient 预留 token；它们都算在总上下文里。"""
+        slots = max(self.cfg.images.history_images, 0)
+        reserve = estimate_text_tokens(ambient)
+        if slots > 0 and any(getattr(message, "images", None) for message in history_messages):
+            reserve += slots * _HISTORY_IMAGE_TOKENS
+        reserve += len(prepared or []) * _HISTORY_IMAGE_TOKENS
+        return max(budget - reserve, 256) if reserve else budget
+
+    def _log_context(
+        self,
+        session: str,
+        budget: int,
+        history_messages: list,
+        history: list,
+        ambient: str,
+        prepared: list | None,
+    ) -> None:
+        ids = [message.id for message in history_messages]
+        id_range = f"{ids[0]}..{ids[-1]}" if ids else "-"
+        text_tokens = 0
+        image_count = 0
+        for item in history:
+            content = item.get("content")
+            if isinstance(content, list):
+                text = " ".join(
+                    str(part.get("text", "")) for part in content if part.get("type") == "text"
+                )
+                image_count += sum(1 for part in content if part.get("type") == "image_url")
+            else:
+                text = str(content)
+            text_tokens += estimate_text_tokens(text) + 4
+        ambient_lines = sum(1 for line in ambient.splitlines() if "「" in line)
+        total = text_tokens + image_count * _HISTORY_IMAGE_TOKENS + estimate_text_tokens(ambient)
+        log.info(
+            "上下文 session=%s 历史=%d/%d 条（id %s） ambient=%d 行 预算=%d 估算=%d "
+            "token 图片=%d（当前 %d）",
+            session,
+            len(history),
+            len(history_messages),
+            id_range,
+            ambient_lines,
+            budget,
+            total,
+            image_count,
+            len(prepared or []),
+        )
 
     def _attach_history_images(self, history: list[dict]) -> list[dict]:
         """把最近几张历史图重新塞回它们原来的那一轮。
