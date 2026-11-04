@@ -728,6 +728,7 @@ input[role="switch"]::after {
 .add-row { display: flex; gap: 8px; padding: 12px 0 14px; }
 .add-row .input { flex: 1; height: 38px; }
 .add-row .btn { height: 38px; flex: none; }
+.add-err { margin: -6px 0 10px; }
 
 .tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .tools .ok { font-size: 12px; color: var(--success-ink); }
@@ -894,8 +895,8 @@ details.card .card-pad { padding-top: 4px; }
   overflow: hidden;
 }
 .modal[open] { animation: dialog-in var(--dur-3) var(--ease-spring-soft); }
-/* 下拉浮层挂在 dialog 里，打开时让 dialog 别再裁掉它 */
-.modal.select-open { overflow: visible; }
+/* 下拉浮层/通知挂在 dialog 里时，打开期间让 dialog 别再裁掉它们 */
+.modal.select-open, .modal.toast-open { overflow: visible; }
 .modal::backdrop {
   background: oklch(0% 0 0/.35);
   animation: fade-in var(--dur-2) var(--ease-out-quart);
@@ -1141,6 +1142,75 @@ details.card .card-pad { padding-top: 4px; }
 
 /* ---------- toast / 骨架 / 空态 ---------- */
 
+/* 主面板通知：顶部居中，topbar 下 12px。
+   弹窗打开时 JS 会把同一套 stack 挂到 dialog 里，避免被 modal 挡住/变 inert。 */
+.toast-stack {
+  position: fixed;
+  inset: 68px auto auto 50%;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+  color: var(--text);
+  transform: translateX(-50%);
+}
+.toast-item {
+  position: relative;
+  width: 100%;
+  padding: 11px 14px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: toast-in var(--dur-3) var(--ease-spring-soft);
+}
+.toast-item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.toast-item.is-leaving {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity var(--dur-1) var(--ease-out-quart),
+              transform var(--dur-1) var(--ease-out-quart);
+}
+.toast-text { overflow-wrap: anywhere; }
+.toast-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--success);
+  transform-origin: left;
+  animation: toast-progress linear forwards;
+}
+.toast-item.bad { border-color: color-mix(in oklab, var(--danger) 45%, var(--border)); }
+.toast-item.bad .toast-bar { background: var(--danger); }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-8px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+/* 旧版单条 toast：插件页仍在用，先保留，等插件面板迁到新组件再删。 */
 .toast {
   position: fixed;
   left: 50%;
@@ -1211,6 +1281,9 @@ details.card .card-pad { padding-top: 4px; }
   }
   .tab-ink { transition: none; }
   .entity-ink { transition: none; }
+  .toast-item { animation: none; }
+  .toast-item.is-leaving { transition: none; }
+  .toast-bar { display: none; }
   ::view-transition-new(root) { animation: none; }
 }
 

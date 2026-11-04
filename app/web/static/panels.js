@@ -48,11 +48,15 @@ function modelPanel(section) {
       createModel();
     }
   });
+  input.addEventListener("input", () => setAddError("model", ""));
   const add = uiButton("新建", { variant: "outline", size: "sm" });
   add.type = "button";
   add.addEventListener("click", createModel);
   addRow.append(input, add, sortBar(() => saveModelOrder()));
-  pad.append(addRow);
+  const addErr = el("p", "err add-err");
+  addErr.id = "model-add-err";
+  addErr.setAttribute("aria-live", "polite");
+  pad.append(addRow, addErr);
   listCard.append(pad);
   wrap.append(listCard);
   makeSortable(list);
@@ -217,11 +221,29 @@ async function activateModel(name) {
   }
 }
 
+function setAddError(kind, message) {
+  const err = $(`${kind}-add-err`);
+  const input = $(`${kind}-new`);
+  if (!err || !input) return;
+  err.textContent = message || "";
+  input.classList.toggle("invalid", Boolean(message));
+  input.setAttribute("aria-invalid", message ? "true" : "false");
+  if (message) {
+    input.focus();
+    input.select();
+  }
+}
+
 async function createModel() {
   const input = $("model-new");
   const name = (input?.value || "").trim();
+  setAddError("model", "");
   if (!name) {
-    toast("先给新配置起个名字", "bad");
+    setAddError("model", "先给新配置起个名字");
+    return;
+  }
+  if (MODELS.items.some((item) => item.name === name)) {
+    setAddError("model", `同名配置「${name}」已存在`);
     return;
   }
   try {
@@ -232,7 +254,7 @@ async function createModel() {
     });
     const data = await response.json();
     if (!response.ok || !data.ok) {
-      toast(data.message || "添加失败", "bad");
+      setAddError("model", data.message || "添加失败");
       return;
     }
     if (input) input.value = "";
@@ -240,7 +262,7 @@ async function createModel() {
     paintModels();
     toast(`已添加「${name}」，当前参数存了进去`);
   } catch (error) {
-    toast(`添加失败：${error.message}`, "bad");
+    setAddError("model", `添加失败：${error.message}`);
   }
 }
 
@@ -294,11 +316,15 @@ function personaPanel(section) {
       createPersona();
     }
   });
+  input.addEventListener("input", () => setAddError("persona", ""));
   const add = uiButton("新建", { variant: "outline", size: "sm" });
   add.type = "button";
   add.addEventListener("click", createPersona);
   addRow.append(input, add, sortBar(() => savePersonaOrder()));
-  pad.append(addRow);
+  const addErr = el("p", "err add-err");
+  addErr.id = "persona-add-err";
+  addErr.setAttribute("aria-live", "polite");
+  pad.append(addRow, addErr);
   listCard.append(pad);
   wrap.append(listCard);
   makeSortable(cards);
@@ -435,8 +461,13 @@ async function activatePersona(name) {
 async function createPersona() {
   const input = $("persona-new");
   const name = (input?.value || "").trim();
+  setAddError("persona", "");
   if (!name) {
-    toast("先给新人设起个名字", "bad");
+    setAddError("persona", "先给新人设起个名字");
+    return;
+  }
+  if (PERSONAS.items.some((item) => item.name === name)) {
+    setAddError("persona", `「${name}」已经存在`);
     return;
   }
   try {
@@ -447,7 +478,7 @@ async function createPersona() {
     });
     const data = await response.json();
     if (!response.ok || !data.ok) {
-      toast(data.message || "新建失败", "bad");
+      setAddError("persona", data.message || "新建失败");
       return;
     }
     if (input) input.value = "";
@@ -456,7 +487,7 @@ async function createPersona() {
     await activatePersona(data.name);
     toast(`已新建「${data.name}」`);
   } catch (error) {
-    toast(`新建失败：${error.message}`, "bad");
+    setAddError("persona", `新建失败：${error.message}`);
   }
 }
 

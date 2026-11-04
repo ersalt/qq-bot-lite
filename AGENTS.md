@@ -107,6 +107,8 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
   整页滚不动（进阶设置展开后最明显）。`html`/`body` 一律 `overflow-x: clip`。
 - **下拉框统一用 `uiSelect`**：原生 `<select>` 在弹窗里没法做浮层/勾选，而且 Basecoat 的 preflight
   会把原生控件边框抹掉。`uiSelect` 在弹窗内会把浮层挂到 `dialog` 上，避免被 `overflow` 裁切。
+- **通知统一走 `toast()`**：主面板顶部 `.toast-stack`，弹窗打开时自动挂到该 `dialog` 里；不要再写
+  底部 `.toast`（旧样式只留给插件页）。新建重名这类表单错误同时给行内 `.err`，不能只靠通知。
 - `python -m app.pluginkit.check` 在 GBK 控制台会因 `✓` 编码报错：先
   `$env:PYTHONIOENCODING = "utf-8"` 再跑（不是代码问题）。
 - **移动目录 / 重启前先停进程**，否则 `.venv`、`data/*.db` 被占用。

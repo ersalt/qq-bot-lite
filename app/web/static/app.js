@@ -20,14 +20,77 @@ function el(tag, cls, text) {
   return node;
 }
 
+function toastStackFor(host) {
+  let stack = Array.from(host.children).find((node) => node.classList?.contains("toast-stack"));
+  if (!stack) {
+    stack = document.createElement("div");
+    stack.className = "toast-stack";
+    stack.setAttribute("aria-live", "polite");
+    host.append(stack);
+  }
+  return stack;
+}
+
+function syncToastStack(stack) {
+  if (!stack || stack.children.length > 0) return;
+  const dialog = stack.closest("dialog");
+  if (dialog) {
+    dialog.classList.remove("toast-open");
+    stack.remove();
+  }
+}
+
+function dismissToast(node) {
+  if (!node || !node.isConnected || node.classList.contains("is-leaving")) return;
+  const stack = node.parentElement;
+  clearTimeout(node._timer);
+  node.classList.add("is-leaving");
+  window.setTimeout(() => {
+    node.remove();
+    syncToastStack(stack);
+  }, 160);
+}
+
 function toast(message, kind = "ok") {
-  const node = $("toast");
-  node.textContent = message;
-  node.className = `toast show ${kind}`;
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => {
-    node.className = "toast";
-  }, 2600);
+  const dialog = document.querySelector("dialog[open]");
+  const host = dialog || document.body;
+  const stack = toastStackFor(host);
+  if (dialog) dialog.classList.add("toast-open");
+
+  const node = document.createElement("div");
+  node.className = `toast-item ${kind}`;
+  node.tabIndex = 0;
+  node.title = "点击关闭";
+  node.setAttribute("role", kind === "bad" ? "alert" : "status");
+  node.setAttribute("aria-live", kind === "bad" ? "assertive" : "polite");
+
+  const text = document.createElement("div");
+  text.className = "toast-text";
+  text.textContent = message;
+  const bar = document.createElement("span");
+  bar.className = "toast-bar";
+  bar.setAttribute("aria-hidden", "true");
+  node.append(text, bar);
+
+  node.addEventListener("click", () => dismissToast(node));
+  node.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "Escape") {
+      event.preventDefault();
+      dismissToast(node);
+    }
+  });
+
+  const life = kind === "bad" ? 5200 : 3200;
+  bar.style.animationDuration = `${life}ms`;
+  node._timer = window.setTimeout(() => dismissToast(node), life);
+  stack.prepend(node);
+  while (stack.children.length > 3) {
+    const old = stack.lastElementChild;
+    if (old) {
+      clearTimeout(old._timer);
+      old.remove();
+    }
+  }
 }
 
 const reducedMotion = () =>

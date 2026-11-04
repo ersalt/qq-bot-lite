@@ -35,6 +35,8 @@
 - **修复上下文“鱼的记忆”**：锚点窗口原来用 `after()` 取锚点后**最早**的 126 条，历史一长，最新对话就永远进不了窗口（实机数据落后 431 条）。改用 `latest_after()` 取最新 N 条，裁剪时补齐半轮（不退化成从 assistant 开始的孤儿消息）；新增 `tests/test_context_window.py` 回归。
 - `[context] max_messages` 默认 100 → 40（约 20 轮），对齐 AstrBot 的量级；窗口从 60% 涨到 125% 才推进锚点，兼顾注意力与 KV 缓存。
 - 设置页和插件设置弹窗的下拉框改成自绘 `uiSelect`：参考 SnowLuma 调试台，40px 触发框 + 10px 浮层、32px 选项、选中勾、上下翻转；支持 ↑↓/Home/End/Enter/Space/Esc/Tab/字母定位。弹窗内浮层挂到 `dialog`，不再被 `overflow` 裁切。
+- 模型/人设新建重名或空名时，输入框标红 + 行内 `.err` 提示，聚焦并全选输入，不再只依赖底部 toast。
+- 主面板通知改成顶部 `.toast-stack`：topbar 下 12px，最多 3 条，新的在上；成功 3.2s、错误 5.2s，底部 2px 进度条从右往左走完，点击 / Enter / Space / Esc 立即关闭；弹窗打开时挂到该 `dialog` 里，避免被 modal 的 inert 挡住。插件页旧的 `.toast` 样式先保留。
 
 （下一版在这里记）
 
