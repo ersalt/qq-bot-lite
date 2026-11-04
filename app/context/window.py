@@ -27,9 +27,9 @@ def _render(
     if message.role == "user" and is_group:
         speaker = message.speaker or (str(message.user_id) if message.user_id else "某人")
         prefix = f"[{_stamp(message)}] " if timestamps else ""
-        return f"{prefix}{speaker}: {text}"
+        return f"{prefix}「{speaker}」: {text}"
     if message.role == "assistant" and is_group and addressee:
-        return f"（回 {addressee}）{text}"
+        return f"（回 「{addressee}」）{text}"
     return text
 
 

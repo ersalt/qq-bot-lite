@@ -48,8 +48,8 @@ def scene_line(
     """
     now = _dt.datetime.now()
     name = self_name or cfg.persona.nickname
-    who = f"{speaker} ({speaker_id})" if speaker_id else speaker
-    me = f"{name} ({self_id})" if self_id else name
+    who = f"「{speaker}」 ({speaker_id})" if speaker_id else f"「{speaker}」"
+    me = f"「{name}」 ({self_id})" if self_id else f"「{name}」"
     where = f"{group_name or '未知群名'} ({group_id})" if is_group else "private"
     return (
         "<ctx>\n"

@@ -124,8 +124,8 @@ def test_build_history_marks_assistant_addressee():
         _msg(2, "assistant", "回答", reply_to=1),
     ]
     history = build_history(messages, ContextConfig(), is_group=True)
-    assert "alice: 问它" in history[0]["content"]
-    assert history[1]["content"] == "（回 alice）回答"
+    assert "「alice」: 问它" in history[0]["content"]
+    assert history[1]["content"] == "（回 「alice」）回答"
 
     # 触发消息不在窗口里时不硬编一个名字
     outside = build_history(

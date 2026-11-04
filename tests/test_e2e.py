@@ -212,7 +212,7 @@ async def test_reply_links_to_trigger_and_history_shows_addressee(tmp_path: Path
         await asyncio.sleep(0.2)
 
     sent = json.dumps(state.requests[1]["messages"], ensure_ascii=False)
-    assert "（回 阿伟）" in sent
+    assert "（回 「阿伟」）" in sent
 
     store = MessageStore(db_path)
     try:
