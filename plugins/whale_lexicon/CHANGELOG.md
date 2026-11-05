@@ -2,7 +2,7 @@
 
 ## 0.6.0
 
-按主程序的 `docs/ui-spec.md` 把面板重排了一遍：
+跟主项目 `qq-bot-lite` v0.3.0 配套：面板按 `docs/ui-spec.md` 重排，学习链路补了两处过滤。
 
 - 骨架换成 sticky 顶栏 + 页头 + 页内页签 + 单张白卡行式，去掉侧栏和左右两张卡
 - 分类改成页内页签（带条数、2px 滑动下划线）；群范围收进一张白卡（卡头「范围 + 当前筛选」），
@@ -17,9 +17,13 @@
 - 三个弹窗改用原生 `<dialog class="modal">`（Basecoat 自带的 `.dialog` 会把面板压成
   448px），去掉右上角 X，关闭走 footer / 遮罩 / Esc；设置和录入复用
   `.dialog-group` / `.dialog-grid` / `.field` / `.switch-row`
-- 弹窗补上退场动画：取消 / Esc / 点遮罩统一先播 180ms 缩放淡出（遮罩同步淡出）再真正
-  `close()`，跟打开时的 240ms 弹入对称；`prefers-reduced-motion` 下直接关。退场中的弹窗
-  不再接收新 toast，避免通知跟着弹窗一起消失
+- 弹窗关闭走宿主的 `.modal[open].is-closing` 时序（`dialog-out` / `backdrop-out` 由主项目
+  `style.css` 提供，插件不再复写 `.modal`）：取消 / Esc / 点遮罩都先播 180ms 再 `close()`，
+  `prefers-reduced-motion` 下直接关；退场中的弹窗不再接收新 toast。面板没加载宿主
+  `plugins.js`，`closeMask` 是标了 `host-gap` 的本地临时实现，等通用 `closeDialog` 进
+  `ui.js` 后再替换
+- 清单补 `api = 1`：插件只用到钩子 / 命令 / 面板，没有 model-facing tools，不跟随主项目
+  升到 api 2（接口未变）
 - 控件全部走 Basecoat：按钮 `data-variant`、下拉 `uiSelect`、输入 `.input`、开关
   `input[role=switch]`；默认态不写 `data-variant="default"`。搜索结果、排序和翻页不再整页闪
 - 悬浮通知改用主面板的 `.toast-stack` / `.toast-item`：顶部居中、最多 3 条、成功 3.2s /

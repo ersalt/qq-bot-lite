@@ -256,25 +256,6 @@
   overflow-wrap: anywhere;
 }
 
-/* ---------- 弹窗退场 ---------- */
-
-/* 原生 dialog 关掉就整个没了，先挂 is-closing 播完退场再 close（见 closeMask） */
-.modal[open].is-closing {
-  animation: dialog-out var(--dur-2) var(--ease-out-quart) forwards;
-  pointer-events: none;
-}
-.modal[open].is-closing::backdrop {
-  animation: dialog-out-fade var(--dur-2) var(--ease-out-quart) forwards;
-}
-@keyframes dialog-out {
-  from { opacity: 1; transform: none; }
-  to { opacity: 0; transform: translateY(6px) scale(.98); }
-}
-@keyframes dialog-out-fade {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
 @media (max-width: 900px) {
   .head-actions { width: 100%; }
   .head-actions .input { width: auto; flex: 1 1 180px; }
@@ -673,6 +654,9 @@ function openMask(node) {
   node.focus();
 }
 
+/* host-gap：面板只加载 ui.js，没有主面板 plugins.js 里的 closeDialog()。
+   退场样式（.modal[open].is-closing / dialog-out / backdrop-out）由宿主 style.css 提供，
+   这里只补「等动画结束再 close」的时序；宿主把通用 closeDialog 放进 ui.js 后换掉这段。 */
 const CLOSE_MOTION_MS = 180;
 
 function closeMask(node) {

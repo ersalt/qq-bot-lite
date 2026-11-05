@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from .core.space import Limits, SpaceError, SpaceStore
 from .core.tools import allow_write, build_tools
 
-VERSION = "0.5.2"
+VERSION = "0.5.3"
 SPACE_LABEL = "data/plugin_data/bot_space/space"
 SPACE_WORDS = ("小本本", "手记", "空间", "笔记", "日记")
 SPACE_SUFFIX = (

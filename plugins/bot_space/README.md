@@ -7,7 +7,7 @@ qq-bot-lite 的插件：**BOT空间**。bot 自己写、用户只读的 Markdown
 没有 `/space` 命令，没有编辑按钮，也没有「让 bot 写一条」的触发。
 
 - 插件接口：`api = 2`（需要 qq-bot-lite 的原生工具协议，>= 0.2.0）
-- 当前版本：`0.5.2`
+- 当前版本：`0.5.3`
 - 内置位置：`plugins/bot_space/`，随主仓库分发的完整副本（含 tests/docs）；默认启用
 - 主要开发在插件自己的项目里进行，完成后同步到主仓库副本
 - 用户文档：本 README；完整设置说明见主项目 `docs/guide.md` 的「内置插件」
@@ -179,6 +179,8 @@ data/plugin_data/bot_space/
 - 「审计」弹窗查看最近 50 条工具调用；
 - 右上角「设置」弹窗编辑插件设置（写权限、自主权说明、配额、读取条数），走主程序
   `/api/plugins/bot_space/settings`，不修改手记内容；
+- 弹窗退场复用宿主 `.modal[open].is-closing`；插件页的 `closeMask()` 是 host-gap，
+  等主项目 `ui.js` 通用 helper 后替换；
 - 手记内容接口**全部 GET**，没有编辑、新建、删除、触发按钮。
 
 接口：

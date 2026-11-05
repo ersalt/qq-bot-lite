@@ -267,26 +267,6 @@
 
 .tb-count { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 
-/* ---------- 弹窗关闭 ---------- */
-
-.modal[open].is-closing {
-  animation: bot-space-dialog-out 180ms var(--ease-out-expo) forwards;
-  pointer-events: none;
-}
-.modal[open].is-closing::backdrop {
-  animation: bot-space-backdrop-out 180ms ease forwards;
-}
-@keyframes bot-space-dialog-out {
-  to { opacity: 0; transform: translateY(8px) scale(.98); }
-}
-@keyframes bot-space-backdrop-out {
-  to { opacity: 0; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .modal[open].is-closing { animation: none; }
-  .modal[open].is-closing::backdrop { animation: none; }
-}
-
 /* ---------- 设置弹窗 ---------- */
 
 .settings-modal { width: min(680px, calc(100vw - 32px)); }
@@ -393,7 +373,7 @@
 <body>
 
 <header class="topbar">
-  <div class="brand">BOT空间 <span class="ver" id="brand-version">v0.5.2</span></div>
+  <div class="brand">BOT空间 <span class="ver" id="brand-version">v0.5.3</span></div>
   <span class="tb-sep"></span>
   <span class="tb-scope">手记</span>
   <div class="tb-right">
@@ -494,7 +474,7 @@
 
   <footer class="foot">
     <span>根目录 <code>data/plugin_data/bot_space/space</code></span>
-    <span>只读 · <span id="foot-version">v0.5.2</span></span>
+    <span>只读 · <span id="foot-version">v0.5.3</span></span>
   </footer>
 </main>
 
@@ -987,6 +967,9 @@ function openMask(dialog) {
   dialog.focus();
 }
 
+// host-gap: 主项目 closeDialog 只处理 #dialog，插件页有多个 dialog 且没加载 plugins.js。
+// 这里只切宿主的 .is-closing，复用 style.css 的 dialog-out / backdrop-out 时序；
+// 等 ui.js 提供通用 helper 后替换。
 function closeMask(dialog) {
   if (!dialog || !dialog.open || dialog.classList.contains("is-closing")) return;
   if (reducedMotion()) {
@@ -996,16 +979,20 @@ function closeMask(dialog) {
   const token = (dialog._closeToken || 0) + 1;
   dialog._closeToken = token;
   dialog.classList.add("is-closing");
+  let done = false;
   const finish = () => {
-    if (dialog._closeToken !== token) return;
+    if (done || dialog._closeToken !== token) return;
+    done = true;
+    clearTimeout(dialog._closeTimer);
+    dialog.removeEventListener("animationend", onEnd);
     dialog.classList.remove("is-closing");
     dialog.close();
   };
   const onEnd = (event) => {
-    if (event.target === dialog) finish();
+    if (event.target === dialog && event.animationName === "dialog-out") finish();
   };
-  dialog.addEventListener("animationend", onEnd, { once: true });
-  dialog._closeTimer = window.setTimeout(finish, 260);
+  dialog.addEventListener("animationend", onEnd);
+  dialog._closeTimer = window.setTimeout(finish, 330);
 }
 
 /* ---------- 审计 ---------- */

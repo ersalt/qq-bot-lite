@@ -40,7 +40,7 @@
 - 模型/人设新建重名或空名时，输入框标红 + 行内 `.err` 提示，聚焦并全选输入，不再只依赖底部 toast。
 - 主面板通知改成顶部 `.toast-stack`：topbar 下 12px，最多 3 条，新的在上；成功 3.2s、错误 5.2s，底部 2px 进度条从右往左走完，点击 / Enter / Space / Esc 立即关闭；弹窗打开时挂到该 `dialog` 里，避免被 modal 的 inert 挡住。插件页旧的 `.toast` 样式先保留。
 - 新增 model-facing 工具协议（`api = 2`）：插件导出 `TOOLS` / `tools()`，宿主用 `LLMClient.complete_message()` 保留 `tool_calls`，`ToolRunner` 执行并回填 `role=tool`；工具对话只在本次请求里，不写持久历史，工具对所有会话开放。`api=1` 老插件继续兼容；契约见 `docs/plugin.md`。
-- 两个内置插件随主仓库分发完整副本：`whale_lexicon 0.6.0`、`bot_space 0.5.2`，含 tests/docs，默认启用；主要开发仍在插件项目，协作规则见 `docs/plugin-integration.md`。
+- 两个内置插件随主仓库分发完整副本：`whale_lexicon 0.6.0`、`bot_space 0.5.3`，含 tests/docs，默认启用；主要开发仍在插件项目，协作规则见 `docs/plugin-integration.md`。
 - WebUI 主面板新增「文档」页签，使用 `/api/docs` 读取仓库内 Markdown；不再提供独立 `/manual` 页面。
 - 主面板页签栏最后新增「关于」；关于页展示版本、本地优先说明、文档入口、GitHub 和 MIT License。
 - 设置行和插件设置弹窗移除配置 key 小字和长帮助，只保留必要短提示；详细说明统一放「文档」页签。

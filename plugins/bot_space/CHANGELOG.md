@@ -2,6 +2,17 @@
 
 按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录；版本号语义化。
 
+## 0.5.3 — 2026-11-05
+
+### 变更
+
+- 同步主项目 v0.3.0 的内置插件协作约定：README / AGENTS / 设计记录精简，
+  删除历史性的 `docs/host-group-tools.md`。
+- 面板弹窗退场改为复用宿主 `.modal[open].is-closing` / `dialog-out`，
+  移除插件里重复的 keyframes；本地 `closeMask()` 标记为 **host-gap**（插件页没加载
+  `plugins.js`），等主项目 `ui.js` 提供通用 helper 后替换。
+- 无 API 变更：`api = 2`，`app_version = ">=0.2.0"` 保持不变。
+
 ## 0.5.2 — 2026-11-05
 
 ### 新增
