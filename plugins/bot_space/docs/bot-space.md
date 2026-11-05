@@ -1,11 +1,11 @@
-# bot_space 设计交接（Phase 2 已实现）
+# bot_space 设计记录（Phase 2 已实现）
 
 > 状态：v0.5.2，已是 qq-bot-lite 的**内置插件**，源码在 `qq-bot-lite/plugins/bot_space/`，
 > 随主仓库跟踪和测试，不再维护独立部署副本。
 > 手记**全局一份，不分群聊私聊**；插件侧不按 `is_group` 限制。主项目 `_tools_for` 已对所有会话暴露工具。
 > 这页保留「为什么做、做成什么样、哪些不能做」；安装/使用细节以 `README.md` 为准，
 > 接口契约以主项目 `docs/plugin.md` 为准，冲突先改文档再改代码。
-> 下面的“独立仓库 / 手动打包 / ZIP 安装 / 跨工作区”是历史实现记录，内置化后不再适用。
+> 早期独立仓库/手动打包/跨工作区内容已移除；当前以内置副本和主项目契约为准。
 
 ---
 
@@ -397,79 +397,25 @@ data/plugin_data/bot_space/
 
 ---
 
-## 9. 实现顺序
+## 9. 当前实现与协作
 
-### Phase 1：主项目核心工具协议（qq-bot-lite）
+- Phase 1（宿主工具协议 `complete_message` / `Tool` / `ToolRunner` / `api=2`）已完成。
+- Phase 2（bot_space v0.5.2：十个工具、只读面板、回收站、删除/读取授权）已完成，并内置到
+  `plugins/bot_space/`，随主仓库跟踪和测试。
+- Phase 3（L3 自主触发）**尚未实现**；下面的 L3 描述是设计约束，不是当前行为。
+- 插件源码在 `D:\Dev\bot_space`（独立 git）；主项目 `plugins/bot_space/` 是完整副本。
+  主要开发在插件仓库，完成后把运行时 + tests + docs 同步到副本。
+- 宿主改动只在主项目做；插件缺能力先按主项目 `docs/plugin-integration.md` 写 HOST-REQUEST。
+- 测试：主项目根目录 `pytest plugins/bot_space/tests -q`；插件仓库用自己的 pytest/ruff。
 
-1. `LLMClient.complete_message()` + 单测（用 fake HTTP / mock）。
-2. `Tool` / `ToolContext` 进 `app/sdk.py`。
-3. `ExtensionRegistry` 收集 `TOOLS`，检查重名；只对启用的插件暴露。
-4. `ToolRunner` + 单测（假工具、超轮数、工具异常、结果截断）。
-5. `ChatService` 接入；工具对话不落历史；单测。
-6. `api=2` 文档、`docs/plugin.md`、`AGENTS.md` 更新。
-7. 提交；记录 commit hash 给插件工作区。
+## 10. 待确认 / 未做
 
-### Phase 2：bot_space 插件（新工作区）
-
-1. 建独立仓库 `D:\Dev\bot_space`；`plugin.toml` `api=2`。
-2. `core/space.py`：路径、slug、配额、原子写、审计；纯逻辑测试。
-3. `core/tools.py` + `TOOLS`；工具 schema。
-4. `pages/index.html` 只读面板 + `router` GET。
-5. 手动打 ZIP（只含运行时文件），主面板「安装 ZIP」导入；不写部署脚本。
-6. 插件自检、pytest、ruff。
-7. 主面板安装 ZIP，启用，私聊/群聊实测：模型自己决定 list/read/edit/delete。
-8. 提交插件仓库；发布版本。
-
-### Phase 3：L3
-
-1. `ChatService` 公开 gate / run_agent。
-2. 插件定时任务；预算/空闲/停用。
-3. 每日 journal 实测。
-
----
-
-## 10. 内置后的约定
-
-- 插件源码：`plugins/bot_space/`，随主仓库跟踪；不要再建外部部署副本。
-- 启用/停用：主面板「插件」页；`config.example.toml` 默认启用。
-- 测试：在主项目根目录跑 `pytest plugins/bot_space/tests -q`；CI 会跑同一套。
-- 主项目核心改动直接在主仓库做；插件仍然只依赖 `app.sdk` 的 `api=2` 契约。
-- 删除插件时用现有删除弹窗的「连数据一起删」清空空间。
-
----
-
-## 11. 跨工作区协作说明
-
-就当前 DSH 工具面：
-
-- 不同 workspace / 会话**没有自动的跨会话消息总线**；独立会话不会共享上下文，也不能直接
-  给对方发消息。
-- 能做到的协作：
-  1. **共享文件系统 + git**：一个工作区写契约/提交，另一个工作区读同一份文件、拉同一个仓库。
-  2. **子代理**：在一个会话里用 `subagent` 指定 `cwd`，让子代理在另一个目录干活；子代理结果
-     回到父会话。但这是父子关系，不是两个独立会话对等聊天。
-  3. **workflow**：在一个会话里编排多个子代理并行/串行，适合大范围审计或迁移。
-- 因此建议：
-  - 主项目工具协议在 qq-bot-lite 工作区完成并提交；
-  - `bot_space` 工作区从该 commit 开始，按本文件实现插件；
-  - 两边通过 `docs/bot-space.md` + git commit 同步，不依赖实时对话；
-  - 若需要同时改两边，优先在一个父会话里用两个子代理，而不是开两个互不通信的会话。
-
----
-
-## 12. 待确认
-
-- 面板是否只读（当前设计是只读；删除数据走宿主生命周期）。
-- 是否允许模型 `space_create` 任意标题，还是只允许 `space_append` 当天 journal/固定文件。
-- 已定：手记全局一份，不分群聊私聊；宿主群聊暴露策略待主项目手动放开
-  （主项目已对所有会话开放工具）。
 - L3 的触发时间、每日预算、是否需要主动摘要（v1 建议不需要）。
-- 工具名是否统一 `space_` 前缀；宿主重名时报错还是自动加插件前缀。
+- 是否允许模型 `space_create` 任意标题，还是只允许 `space_append` 当天 journal/固定文件。
+- 工具名统一 `space_` 前缀；宿主重名时报错还是自动加插件前缀。
 - `api=2` 的兼容策略：支持 `api<=2`，旧插件不强制升级。
 
----
-
-## 13. 不做什么（明确）
+## 11. 不做什么（明确）
 
 - 不把 `space_*` 工具写进主项目核心。
 - 不做用户 `/space` 命令。
