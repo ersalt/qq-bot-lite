@@ -1,0 +1,199 @@
+# 鲸语汇（whale_lexicon）
+
+群黑话自学习插件，移植自 AstrBot 插件 `astrbot_plugin_slang`，适配 `qq-bot-lite`。
+
+从群聊里攒消息 → 攒够一批、等机器人闲下来 → 分批调本地模型提取 → 模型自审
+→ 确定的直接进黑话库、拿不准的进待审 → 命中时注入到 system 提示词里。
+黑话没命中时，还会用梗百科兜底注一句。
+
+
+## 在主项目里
+
+本插件现在是 qq-bot-lite 的**内置插件**，源码就在主仓库的 `plugins/whale_lexicon/`，
+随主仓库一起跟踪、测试和发布；不再维护独立的部署副本。
+
+- 启用/停用：主面板「插件」页；默认启用。
+- 开发：直接改 `plugins/whale_lexicon/`，不需要同步脚本。
+- 测试：`python -m pytest plugins/whale_lexicon/tests -q`。
+- 用户文档：本 README；更完整的安装与设置说明见主项目 `docs/guide.md` 的「内置插件」。
+- 开发文档：主项目 `docs/development.md` 的插件章节。
+
+## 结构
+
+```
+whale_lexicon/
+  plugin.toml        元数据与设置项（主面板里可改）
+  plugin.py          对接层：攒消息、学习调度、注入、命令、面板接口
+  pages/index.html   网页面板
+  core/              纯逻辑，不依赖任何机器人 API
+    store.py         SQLite：四张词条表、缓冲区、群名、梗百科
+    service.py       业务：去重、入库、审核、分页、匹配
+    index.py         按首字符分桶的关键词索引
+    matcher.py       命中后的提示词拼装
+    miner.py         分批提取 + 自审
+    wiki.py          梗百科同步（cnmeme.wiki 公开接口）
+```
+
+## 学习是怎么触发的
+
+1. 每条群消息进缓冲（`auto_learn` 关掉就不攒；黑名单群、没开私聊的私聊也不攒）
+2. 同一个群攒够 `learn_frequency` 条，排进队列
+3. 调度器每 5 秒看一次：距机器人最后一次回复满 `learn_idle_seconds` 才开始学，
+   免得跟聊天抢模型；但缓冲攒到 `learn_frequency × learn_force_multiplier` 条时不等空闲
+4. 单 worker 串行，学完一个群歇 `learn_group_gap_seconds` 秒再学下一个
+5. 消息按 `learn_batch_size` 切批提取，批间歇 `learn_batch_delay_ms` 毫秒，
+   单批超过 `learn_batch_timeout` 秒就跳过
+6. 全部批次都失败（超时/断网）会保留缓冲，5 分钟后重试；只要有一批成功就继续
+7. 合并候选 → 过滤拒绝词/空泛释义/同义反复（含只报身份的「群友 XXX 的昵称/ID」）→ 一次自审
+8. 自审通过且正文里出现 ≥2 次的直接进黑话库；其余进待审，理由写进词条
+
+## 注入
+
+- 先查黑话：手动 > 自动、长词优先，最多 `inject_max` 条，单条截到 `max_meaning_chars`
+- 黑话没命中再查梗百科：只认标题，命中一条就带上，只让它接一句，不让它科普
+- 群黑名单、没开的私聊，不注入
+
+## 命令
+
+都是管理员命令（`config.toml` 的 `[commands] admins` 为空时不限制）。
+
+```
+/yh list [页]            看已收录词条，8 条一页
+/yh pending              看待审
+/yh search 关键词         搜词条
+/yh add global|group 名字 含义
+/yh approve 名字          通过 / 驳回
+/yh del 名字              删除
+/yh promote 名字          升级为全局
+/yh check 一句话          看这句话会注入什么
+/yh learn                立刻学一批（后台跑，几十秒）
+/yh stat                 统计 + 注入计数
+```
+
+## 设置
+
+两个地方都能改，读写的是同一份 `settings.toml`：
+
+- 插件页顶栏的「设置」⚙ 按钮，点开是页内弹窗
+- 主面板「插件」→「设置」
+
+按分组排列；梗百科那几项只在启用梗百科时才出现。
+
+![设置](docs/panel-settings.png)
+
+| 分组 | 键 | 说明 |
+|---|---|---|
+| 基础 | `enabled` / `listen_private` / `blacklist_groups` | 总开关、是否管私聊、屏蔽的群 |
+| 自动学习 | `auto_learn` / `learn_frequency` / `learn_idle_seconds` / `learn_force_multiplier` / `learn_group_gap_seconds` / `learn_batch_size` / `learn_batch_delay_ms` / `learn_batch_timeout` / `extract_max` | 什么时候学、怎么分批 |
+| 自动学习 | `learn_model` | 学习用哪个模型，留空跟聊天一样 |
+| 自动学习 | `extract_thinking` / `review_thinking` | 提取、自审各自怎么关思考（下拉） |
+| 自动学习 | `extract_extra_body` / `review_extra_body` | 只有选「自定义」才出现，填 JSON |
+| 注入 | `inject_max` / `max_meaning_chars` | 注入几条、单条多长 |
+| 候选过滤 | `reject_words` | 名字命中就丢，不送自审 |
+| 梗百科 | `wiki_enable` / `wiki_sync_enable` / `wiki_sync_time` / `wiki_sync_interval_days` | 页签分类、定时同步 |
+
+### 关思考：跟原插件同一套七档
+
+| 选项 | 行为 |
+|---|---|
+| 自动识别（提取默认） | 按模型名猜参数；猜不到按 OpenAI 兼容处理 |
+| 不处理 | 保持思考 |
+| OpenAI / LM Studio | `reasoning_effort: "none"` |
+| GLM | `thinking.type = disabled` |
+| Gemini | `gm_thinking_config.budget = 0` |
+| DeepSeek | 试 `reasoning_effort: "none"`，建议同时换 `deepseek-chat` |
+| 自定义 | 显示 JSON 输入框，填什么发什么 |
+
+- 只有选「自定义」才显示 JSON 输入框
+- 后端不认这个参数：自动去掉重试一次，之后不再试，聊天不受影响
+- 提取默认关思考、自审默认保持思考，形成混合模式；两者分开配
+- 本机 LM Studio 实测：同一段聊天 11.8 秒 → 1.8 秒
+- 想用更小的模型专跑学习：`learn_model` 选一个（下拉列表来自当前连着的模型服务）
+
+`learn_model` 那个下拉就是插件设置面板的**兜底接口**在起作用：`plugin.toml` 里声明的
+只是普通输入框，`settings_fields()` 在打开设置时去问模型服务要列表，拿到才换成下拉；
+连不上或者接口出错，照旧是输入框。
+
+
+## 面板
+
+访问 `/plugins/whale_lexicon/`。跟主面板（`qq-bot-lite` 的 `docs/ui-spec.md`）同一套骨架：
+sticky 顶栏 + 页头 + 页内页签 + 一张白卡；分类是页签，群范围是页签下的筛选卡片，没有侧栏。
+这套骨架依赖主程序的新 `theme.css` 令牌、`.modal` 样式和 `ui.js` 的 `uiSelect`；
+主程序还是旧面板时继续用 0.5.x。
+
+![待审](docs/panel.png)
+
+- 顶栏：鲸语汇 + 版本、自检状态、设置 / 主题 / 全屏
+- 页头：分类标题 + 说明，右侧搜索（`/` 聚焦）和 `+ 手动录入`（只在「手动」出现）
+- 页签：手动 / 黑话库 / 待审 / 梗百科，带条数，选中项有 2px 下滑线
+- 范围卡片：收在一张白卡里，卡头是「范围 + 当前筛选」；下面是全部 / 全局 / 各群
+  （群名 + `[群号]` + 条数），和主面板模型配置方框同款，选中框用 `.entity-ink`
+  在卡片间滑动，角标「筛选中」
+- 白卡：条数 + 排序；「待审」有全选和批量通过/删除；下面是行式词条和翻页
+- 下拉框全部用主程序的 `uiSelect`（`#llm` 进阶设置「思考档位」同款），排序、录入作用域、
+  插件设置里的选项都是自绘菜单
+- 词条行：名称 | 含义 + 关键词 + `来源 · 群 · ×次数 · 时间 · 理由` | 通过/驳回 · 修改 · 删除
+- 梗百科的词条是只读的，按钮位显示「只读」
+- 手动录入同名词条：输入框标红 + 行内错误 + 聚焦全选，同时顶部错误通知
+- 通知用主面板的 `.toast-stack` / `.toast-item`：顶部居中、最多 3 条、点击或键盘可关
+- 页内「设置」弹窗和主面板的插件设置是同一份数据（同一个接口），改哪边都一样
+
+顺序跟原插件一致：**手动**（知识库）→ **黑话库**（学来的）→ **待审**（审查）→ **梗百科**（兜底），
+默认落在「手动」。
+
+![设置](docs/panel-settings.png)
+![梗百科](docs/panel-wiki.png)
+![录入](docs/panel-add.png)
+![同名提示](docs/panel-duplicate.png)
+![暗色](docs/panel-dark.png)
+
+## 从 AstrBot 搬数据
+
+原来的群语汇（`astrbot_plugin_slang`）数据可以直接搬过来，表结构同源，只有两处要转：
+
+- 作用域：AstrBot 存 `123456789`，这里存 `group:123456789`
+- 群名：AstrBot 在 `data_v4.db` 的 `umo_aliases`，这里在 `groups` 表
+
+```bash
+python tools/import_from_astrbot.py \
+  --source "<AstrBot>/data/plugin_data/astrbot_plugin_slang/jargon.db" \
+  --target "<qq-bot-lite>/data/plugin_data/whale_lexicon/jargon.db" \
+  --aliases "<AstrBot>/data/data_v4.db" \
+  --replace
+```
+
+先停机器人再跑。`--replace` 清空现有词条（梗百科是合并），不加就是往现有数据上合并。
+加 `--dry-run` 只统计不写库；`--no-wiki` / `--no-aliases` 可以跳过梗百科和群名。
+
+## 接口
+
+全部在 `/plugins/whale_lexicon/` 下，返回 `{"ok": bool, "message": str, ...}`：
+
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET | `ping` | 自检：条数、缓冲、注入计数、版本 |
+| GET | `tree` | 页签和筛选条：分类 + 按群计数 |
+| GET | `list` | 分页列表（bucket / search / scope / scoped / page / size / sort） |
+| POST | `lookup` | 录入前查重 |
+| POST | `add` / `update` / `delete` | 增删改 |
+| POST | `approve` / `bulk` | 通过、驳回、批量 |
+| POST | `learn` | 立刻学一批 |
+| POST | `wiki/sync` | 同步梗百科 |
+
+## 开发
+
+跟着主程序的规范走（主项目 `docs/development.md` 的插件章节 + `docs/plugin.md`），
+在主项目根目录执行：
+
+```powershell
+.venv\Scripts\python.exe -m pytest plugins/whale_lexicon/tests -q
+.venv\Scripts\ruff.exe check plugins/whale_lexicon
+.venv\Scripts\python.exe -m app.pluginkit.check plugins/whale_lexicon
+```
+
+主项目 CI 会一并跑两个内置插件的测试；插件不再单独维护 GitHub Actions。
+
+## 许可
+
+MIT，沿用原作者（贰叔）的 LICENSE。

@@ -26,6 +26,10 @@ jobs:
         run: python -m ruff check .
       - name: Run tests
         run: python -m pytest tests -q
+      - name: 内置插件测试
+        run: |
+          python -m pytest plugins/whale_lexicon/tests -q
+          python -m pytest plugins/bot_space/tests -q
       - name: 插件规范自检
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.13'
         run: python -m app.pluginkit.check plugins

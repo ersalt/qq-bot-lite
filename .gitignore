@@ -11,9 +11,7 @@ logs/*.log.*
 # 插件运行期数据：里面有群聊里学出来的词，整体不入库
 data/plugin_data/
 
-# 插件是独立仓库，放在 plugins/ 下但不并入主仓库（_template 除外）
-plugins/whale_lexicon/
-plugins/bot_space/
+# 插件随主仓库跟踪；插件运行数据仍只留在 data/plugin_data/
 
 # 历史图片的本地副本（QQ 图链会过期，所以留一份）
 data/images/

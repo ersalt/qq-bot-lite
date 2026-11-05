@@ -77,8 +77,9 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
    按钮/输入框走它的类名和 `data-variant`；默认态**不要**写 `data-variant="default"`（会匹配不到、变透明）。
    表单下拉框用 `uiSelect`（`static/ui.js`），不要手写原生 `<select>`。
    **界面规范在 `docs/ui-spec.md`，改界面前先读；令牌只准在 `theme.css` 定义，`style.css` 只引用。**
-4. **插件只从项目内 `plugins/` 加载**，`[extensions] dirs` 留空。插件是独立仓库，源码在项目外，
-   部署副本放在 `plugins/<id>/`（主仓库 `.gitignore` 已忽略，副本里有 `.deployed.json` 记录版本提交）。
+4. **插件只从项目内 `plugins/` 加载**，`[extensions] dirs` 留空。`whale_lexicon` 和
+   `bot_space` 已是主仓库内置插件，源码、测试、文档都随主仓库跟踪；新插件也可以直接放
+   `plugins/<id>/`，不要再引入外部部署副本。
 5. 配置写回是**逐行改**，不是整份重写——注释必须保留。
 
 ## 插件模型（细节见 docs/plugin.md）
@@ -129,7 +130,7 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
 ```
 D:\Dev\
   qq-bot-lite\              本项目
-  whale_lexicon\            插件源码仓库（独立发版，部署副本在 plugins/whale_lexicon）
+  whale_lexicon\            旧插件源码仓库（已内置进本仓库，保留只作历史参考）
   astrbot_plugin_slang\     AstrBot 版插件，收尾维护中（跟本项目无关）
   _archive\                 归档：bot-workspace-legacy（AstrBot 时代的工作区）、
                             astrbot_plugin_no_send_tool（已报废）
@@ -145,4 +146,4 @@ D:\Dev\
 - 面板已按 `docs/ui-spec.md` 重排：顶栏 + 页头 + 页内页签 + 白卡行式，动效见规范第 7 节。
 - 文档五份：local-first / plugin / log-spec / ui-spec / bot-space。
 - 本机运行时：机器人在跑，LM Studio 加载 `qwen3.8-27b`（32768 ctx），SnowLuma 反连 8790。
-- 插件部署模型：源码 `D:\Dev\whale_lexicon` → `tools/deploy-to-bot.ps1` → `plugins/whale_lexicon`。
+- 插件模型：`whale_lexicon` / `bot_space` 直接内置在 `plugins/`，与主仓库同测试、同发版。

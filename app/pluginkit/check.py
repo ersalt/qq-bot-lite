@@ -139,7 +139,9 @@ def check_plugin(plugin_dir: Path) -> Report:
             if module == "app.sdk" or module.startswith("app.sdk."):
                 continue
             report.errors.append(f"{rel} 引了 {module}，插件只能用 app.sdk")
-        if ABS_PATH.search(source):
+        # tests/ 里出现 /home/、/Users/ 这类字符串多半是在测试“绝对路径检测”本身，
+        # 不应该反过来变成插件规范警告。
+        if rel.parts[0] != "tests" and ABS_PATH.search(source):
             report.warnings.append(f"{rel} 里写死了绝对路径")
         if plugin_dir.name not in ("_template",) and manual_log_prefix(source):
             report.warnings.append(f"{rel} 日志里手写了 [前缀]，ctx.log 会自动加")

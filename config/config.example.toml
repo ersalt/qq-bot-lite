@@ -147,7 +147,8 @@ trust_env = false
 [extensions]
 # 插件：填 plugins/ 下的目录名即可启用（首次启动会自动从 config.example.toml 复制一份）。**平时不用手改这里**，
 # 在设置面板的「插件」页开关就行，它会自动回写这一行（见 docs/plugin.md）。
-enabled = []
+# 两个内置插件默认启用；删掉某个名字就是关闭它。
+enabled = ["bot_space", "whale_lexicon"]
 # 插件只从项目内的 plugins/ 加载。dirs 是给 AstrBot 那类老布局留的兼容口子，
 # 平时留空：插件就该和项目一起走，不要指向仓库外面的目录。
 dirs = []

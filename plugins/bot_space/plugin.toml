@@ -1,0 +1,84 @@
+title = "BOT空间"
+description = "模型自己决定写什么的 Markdown 手记，群聊私聊共用一份；用户只读查看。"
+version = "0.5.2"
+author = "贰叔"
+api = 2
+app_version = ">=0.2.0"
+panel = "/plugins/bot_space"
+
+# ---------- 权限 ----------
+
+[[config]]
+key = "allow_write"
+label = "允许模型创建/追加"
+type = "bool"
+default = true
+group = "basic"
+group_label = "权限"
+help = "关掉后模型只剩 list/read/search，不再能写。改完下一轮对话生效。"
+
+[[config]]
+key = "autonomy_guard"
+label = "空间自主权说明"
+type = "bool"
+default = true
+group = "behavior"
+group_label = "行为"
+help = "在 system 里加一段固定说明：空间是模型自己的，写不写由它判断，用户要求只是建议。关掉会少一点 token，但模型更容易被带着写。"
+
+# ---------- 配额 ----------
+
+[[config]]
+key = "max_file_kb"
+label = "单文件上限（KB）"
+type = "number"
+min = 1
+max = 1024
+default = 64
+group = "quota"
+group_label = "配额"
+help = "追加超过这个大小会被拒绝；已有文件不受影响。"
+
+[[config]]
+key = "max_files"
+label = "文件总数上限"
+type = "number"
+min = 1
+max = 2000
+default = 200
+group = "quota"
+group_label = "配额"
+
+[[config]]
+key = "max_total_mb"
+label = "手记总量上限（MB）"
+type = "number"
+min = 1
+max = 100
+default = 10
+group = "quota"
+group_label = "配额"
+
+# ---------- 工具 ----------
+
+[[config]]
+key = "read_chars"
+label = "单次读取上限（字）"
+type = "number"
+min = 1000
+max = 8000
+default = 6000
+group = "tools"
+group_label = "工具"
+help = "space_read 单次最多返回多少字；超出部分用 offset 续读。"
+
+[[config]]
+key = "search_hits"
+label = "搜索结果条数"
+type = "number"
+min = 1
+max = 20
+default = 5
+group = "tools"
+group_label = "工具"
+help = "space_search 单次最多返回多少条匹配。"
