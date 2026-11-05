@@ -90,6 +90,31 @@ def test_max_bytes_shown_in_kb_and_saved_as_bytes(tmp_path: Path) -> None:
     assert "max_bytes = 8388608" in text
 
 
+def test_local_docs_page_and_markdown_links(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+    with client:
+        page = client.get("/")
+        assert page.status_code == 200
+        assert 'href="/manual"' in page.text
+
+        index = client.get("/manual")
+        assert index.status_code == 200
+        assert "使用指南" in index.text
+        assert "开发文档" in index.text
+        assert 'href="/manual/development.md"' in index.text
+
+        development = client.get("/manual/development.md")
+        assert development.status_code == 200
+        assert "ToolRunner" in development.text
+        assert 'href="/manual/guide.md"' in development.text
+
+        plugin = client.get("/manual/plugins/whale_lexicon/README.md")
+        assert plugin.status_code == 200
+        assert "鲸语汇" in plugin.text
+
+        assert client.get("/manual/nope.md").status_code == 404
+
+
 def test_save_writes_toml_and_applies(tmp_path: Path) -> None:
     client, path = _client(tmp_path)
     with client:

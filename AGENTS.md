@@ -62,8 +62,9 @@ app/
   config.py           dataclass 配置 + TOML 读写（写回保留注释）
 plugins/              插件（只从这里加载；_template 是骨架）
 personas/             人设 Markdown
-docs/                 local-first.md（定位与实测）、plugin.md（插件开发）、log-spec.md（日志格式）、
-                      ui-spec.md（界面契约）、bot-space.md（bot 私人空间设计交接）
+docs/                 guide.md（用户指南）、development.md（开发文档）、local-first.md（定位与实测）、
+                      plugin.md（插件开发）、log-spec.md（日志格式）、ui-spec.md（界面契约）、
+                      bot-space.md（bot 私人空间设计交接）；WebUI 在 /manual 本地阅读
 ```
 
 ## 不能碰的设计
@@ -144,6 +145,7 @@ D:\Dev\
 
 - `v0.2.0` 已发布：https://github.com/ersalt/qq-bot-lite/releases/tag/v0.2.0
 - 面板已按 `docs/ui-spec.md` 重排：顶栏 + 页头 + 页内页签 + 白卡行式，动效见规范第 7 节。
-- 文档五份：local-first / plugin / log-spec / ui-spec / bot-space。
+- 文档：guide / development 两本入口，local-first / plugin / log-spec / ui-spec / bot-space 作为深入参考；
+  WebUI 顶栏「文档」走 `/manual`，全部本地 Markdown，不依赖外部站点。
 - 本机运行时：机器人在跑，LM Studio 加载 `qwen3.8-27b`（32768 ctx），SnowLuma 反连 8790。
 - 插件模型：`whale_lexicon` / `bot_space` 直接内置在 `plugins/`，与主仓库同测试、同发版。

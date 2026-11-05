@@ -27,6 +27,7 @@ from .onebot.server import OneBotServer
 from .persona import Persona
 from .pluginkit.registry import ExtensionRegistry
 from .reply.sender import ReplySender
+from .web.docs import mount_docs
 from .web.model_routes import mount_model_api
 from .web.persona_routes import mount_persona_api
 from .web.plugin_routes import mount_plugin_api, mount_plugin_routers
@@ -277,6 +278,7 @@ def build_app(
     mount_persona_api(app, cfg, persona, config_path or CONFIG_PATH, root=persona_dir)
     mount_model_api(app, cfg, llm, config_path or CONFIG_PATH)
     mount_web(app, cfg, persona, config_path or CONFIG_PATH, on_llm_change=llm.reload)
+    mount_docs(app)
 
     return app
 

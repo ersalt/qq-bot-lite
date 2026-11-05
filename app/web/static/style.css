@@ -107,6 +107,14 @@ button, input, select, textarea { font: inherit; }
 }
 .tb-btn:hover { background: var(--primary-soft); color: var(--primary-ink); }
 .tb-btn:active { transform: scale(.94); }
+.tb-doc {
+  width: auto;
+  padding: 0 11px;
+  font-size: 12px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
 
 /* ---------- 页面 ---------- */
 
@@ -1308,6 +1316,64 @@ details.card .card-pad { padding-top: 4px; }
   .toast-item.is-leaving { transition: none; }
   .toast-bar { display: none; }
   ::view-transition-new(root) { animation: none; }
+}
+
+/* ---------- 离线文档 ---------- */
+
+.docs-page {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+.docs-side { position: sticky; top: 76px; }
+.docs-nav { display: flex; flex-direction: column; gap: 18px; }
+.docs-group { display: flex; flex-direction: column; gap: 3px; }
+.docs-group-title {
+  padding: 0 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+.docs-link {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: background-color var(--dur-1) var(--ease-out-quart),
+              color var(--dur-1) var(--ease-out-quart);
+}
+.docs-link:hover { background: var(--primary-soft); color: var(--primary-ink); }
+.docs-link.is-active {
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-weight: 500;
+}
+.docs-content.md-body {
+  max-width: none;
+  margin: 0;
+  padding: 28px 32px;
+  min-width: 0;
+}
+.docs-content .md-body { max-width: none; margin: 0; }
+@media (max-width: 900px) {
+  .docs-page { grid-template-columns: minmax(0, 1fr); padding: 18px 16px 60px; }
+  .docs-side { position: static; }
+  .docs-nav { flex-direction: row; flex-wrap: wrap; gap: 8px 18px; }
+  .docs-group { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 2px; }
+  .docs-group-title { padding: 0 4px 0 0; }
+}
+@media (max-width: 560px) {
+  .docs-content.md-body { padding: 20px 16px; }
+  .docs-nav { flex-direction: column; gap: 10px; }
+  .docs-group { gap: 2px; }
 }
 
 /* ---------- 窄屏 ---------- */
