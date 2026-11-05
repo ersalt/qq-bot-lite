@@ -157,8 +157,18 @@ class ExtensionRegistry:
             item["loaded"] = any(getattr(ext, "name", None) == name for ext in self.extensions)
             item["last_error"] = self.errors.get(name) or item.get("error")
             item["has_page"] = bool(self.pages.get(name))
+            folder = self.root_of(name) / name
+            try:
+                stat = folder.stat()
+                item["installed_at"] = float(getattr(stat, "st_birthtime", stat.st_ctime))
+                item["updated_at"] = float(stat.st_mtime)
+            except OSError:
+                item["installed_at"] = 0.0
+                item["updated_at"] = 0.0
             items.append(item)
-        items.sort(key=lambda item: (not item["enabled"], item["title"].lower()))
+        # 默认顺序必须稳定：不能按 enabled 排，否则安装/停用别的插件时，
+        # 列表里已有插件的位置会跟着跳。面板自己的排序在前端做。
+        items.sort(key=lambda item: (item["title"].lower(), item["name"]))
         return items
 
     # ---------- 加载 ----------

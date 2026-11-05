@@ -3,7 +3,18 @@
 const PLUGINS = {
   loading: false,
   items: null,
+  query: "",
+  sort: "name",
+  page: 1,
+  pageSize: 6,
 };
+
+const PLUGIN_SORTS = [
+  { value: "name", label: "名称 A→Z" },
+  { value: "installed_desc", label: "安装时间：新→旧" },
+  { value: "installed_asc", label: "安装时间：旧→新" },
+  { value: "enabled", label: "启用优先" },
+];
 
 function pluginLogo(title) {
   const node = document.createElement("span");
@@ -93,6 +104,46 @@ function pluginCard(plugin) {
   return card;
 }
 
+function pluginSearchText(plugin) {
+  return [plugin.title, plugin.name, plugin.description, plugin.author]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+}
+
+function pluginName(plugin) {
+  return String(plugin.title || plugin.name || "");
+}
+
+function comparePluginName(left, right) {
+  return pluginName(left).localeCompare(pluginName(right), "zh-Hans-CN");
+}
+
+function visiblePlugins(items) {
+  const query = PLUGINS.query.trim().toLowerCase();
+  const list = (items || []).filter(
+    (plugin) => !query || pluginSearchText(plugin).includes(query),
+  );
+  const sort = PLUGINS.sort;
+  list.sort((left, right) => {
+    if (sort === "installed_desc" || sort === "installed_asc") {
+      const leftAt = Number(left.installed_at) || 0;
+      const rightAt = Number(right.installed_at) || 0;
+      if (leftAt !== rightAt) {
+        return sort === "installed_desc" ? rightAt - leftAt : leftAt - rightAt;
+      }
+      return comparePluginName(left, right);
+    }
+    if (sort === "enabled") {
+      const delta = Number(Boolean(right.enabled)) - Number(Boolean(left.enabled));
+      if (delta) return delta;
+      return comparePluginName(left, right);
+    }
+    return comparePluginName(left, right);
+  });
+  return list;
+}
+
 function pluginsPanel() {
   const wrap = el("div", "plugins");
   const bar = el("div", "plugins-head");
@@ -111,9 +162,45 @@ function pluginsPanel() {
   bar.append(info, tools);
   wrap.append(bar);
 
+  const toolbar = el("div", "plugins-toolbar");
+  const search = uiInput("text", PLUGINS.query, {
+    placeholder: "搜索插件名称、ID 或说明",
+    "aria-label": "搜索插件",
+  });
+  search.type = "search";
+  search.classList.add("plugins-search");
+  search.addEventListener("input", () => {
+    PLUGINS.query = search.value;
+    PLUGINS.page = 1;
+    paintPlugins(PLUGINS.items || []);
+  });
+
+  const sortBox = el("div", "plugins-sortbox");
+  sortBox.append(el("span", "plugins-toolbar-label", "排序"));
+  const sort = uiSelect({
+    id: "plugin-sort",
+    label: "插件排序",
+    value: PLUGINS.sort,
+    items: PLUGIN_SORTS,
+  });
+  sort.classList.add("plugins-sort");
+  sort.addEventListener("change", () => {
+    PLUGINS.sort = sort.value;
+    PLUGINS.page = 1;
+    paintPlugins(PLUGINS.items || []);
+  });
+  sortBox.append(sort);
+  toolbar.append(search, sortBox);
+  wrap.append(toolbar);
+
   const grid = el("div", "plugin-grid");
   grid.id = "plugin-grid";
   wrap.append(grid);
+
+  const pager = el("div", "plugins-pager");
+  pager.id = "plugin-pager";
+  pager.hidden = true;
+  wrap.append(pager);
 
   setTimeout(loadPlugins, 0);
   return wrap;
@@ -297,27 +384,94 @@ async function loadPlugins(force = false) {
   }
 }
 
+function paintPager(total, pages) {
+  const pager = $("plugin-pager");
+  if (!pager) return;
+  if (pages <= 1) {
+    pager.hidden = true;
+    pager.replaceChildren();
+    return;
+  }
+  pager.hidden = false;
+
+  const prev = uiButton("上一页", { variant: "ghost", size: "sm" });
+  prev.disabled = PLUGINS.page <= 1;
+  prev.addEventListener("click", () => {
+    if (PLUGINS.page <= 1) return;
+    PLUGINS.page -= 1;
+    paintPlugins(PLUGINS.items || []);
+  });
+
+  const next = uiButton("下一页", { variant: "ghost", size: "sm" });
+  next.disabled = PLUGINS.page >= pages;
+  next.addEventListener("click", () => {
+    if (PLUGINS.page >= pages) return;
+    PLUGINS.page += 1;
+    paintPlugins(PLUGINS.items || []);
+  });
+
+  const nums = el("div", "plugins-page-nums");
+  const start = Math.max(1, Math.min(PLUGINS.page - 2, pages - 4));
+  const end = Math.min(pages, start + 4);
+  for (let page = start; page <= end; page += 1) {
+    const button = uiButton(String(page), {
+      variant: page === PLUGINS.page ? "secondary" : "ghost",
+      size: "sm",
+    });
+    button.classList.toggle("is-current", page === PLUGINS.page);
+    if (page === PLUGINS.page) button.setAttribute("aria-current", "page");
+    button.addEventListener("click", () => {
+      PLUGINS.page = page;
+      paintPlugins(PLUGINS.items || []);
+    });
+    nums.append(button);
+  }
+
+  pager.replaceChildren(
+    prev,
+    nums,
+    el("span", "plugins-page-info", `第 ${PLUGINS.page} / ${pages} 页 · 共 ${total} 个`),
+    next,
+  );
+}
+
 function paintPlugins(items) {
   const grid = $("plugin-grid");
   if (!grid) return;
+  if (Array.isArray(items)) PLUGINS.items = items;
+  const all = PLUGINS.items || [];
   const count = document.querySelector(".plugins-count");
-  const on = items.filter((item) => item.enabled).length;
-  if (count) count.textContent = `${items.length} 个插件 · ${on} 个已启用`;
+  const on = all.filter((item) => item.enabled).length;
+  const filtered = visiblePlugins(all);
+  const pages = Math.max(1, Math.ceil(filtered.length / PLUGINS.pageSize));
+  PLUGINS.page = Math.min(Math.max(1, PLUGINS.page), pages);
+
+  if (count) {
+    count.textContent = PLUGINS.query.trim()
+      ? `筛出 ${filtered.length} / 共 ${all.length} 个 · ${on} 个已启用`
+      : `${all.length} 个插件 · ${on} 个已启用`;
+  }
   const tabCount = $("plugin-count");
   if (tabCount) {
-    tabCount.textContent = String(items.length);
+    tabCount.textContent = String(all.length);
     // 计数会让页签变宽，正在选中时把 ink 重新贴一下
     if (typeof moveInk === "function") moveInk(false);
   }
 
   const frag = document.createDocumentFragment();
-  if (!items.length) {
+  if (!all.length) {
     frag.append(emptyPlugins());
+  } else if (!filtered.length) {
+    frag.append(emptyPlugins("没有匹配的插件", "换个关键词，或清空搜索框。"));
   } else {
-    for (const plugin of items) frag.append(pluginCard(plugin));
+    const start = (PLUGINS.page - 1) * PLUGINS.pageSize;
+    for (const plugin of filtered.slice(start, start + PLUGINS.pageSize)) {
+      frag.append(pluginCard(plugin));
+    }
   }
   grid.replaceChildren(frag);
-  if (items.length) openDeepLinkPlugin(items);
+  paintPager(filtered.length, pages);
+  if (all.length) openDeepLinkPlugin(all);
 }
 
 // /?plugin=<id> 直接打开某个插件的设置：面板里的插件卡片可以这么链过来
@@ -331,14 +485,15 @@ function openDeepLinkPlugin(items) {
   if (plugin && plugin.config?.length) openPluginDialog(plugin);
 }
 
-function emptyPlugins() {
+function emptyPlugins(title, desc) {
   const box = el("div", "card plugin plugin-empty");
-  box.append(el("h3", null, "还没有插件"));
+  box.append(el("h3", null, title || "还没有插件"));
   box.append(
     el(
       "p",
       "plugin-desc",
-      "把插件目录放到 plugins/ 下，或从插件仓库部署一份；刷新后这里就会出现。带 config 的插件会多一个「设置」按钮，挂上 router 就会多一个「打开面板」。",
+      desc ||
+        "把插件目录放到 plugins/ 下，或从插件仓库部署一份；刷新后这里就会出现。带 config 的插件会多一个「设置」按钮，挂上 router 就会多一个「打开面板」。",
     ),
   );
   return box;

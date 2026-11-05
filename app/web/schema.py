@@ -295,12 +295,13 @@ SECTIONS: list[dict[str, Any]] = [
             _f("images.max_per_message", "单条最多几张", "number", min=1, max=9),
             _f(
                 "images.max_bytes",
-                "单张大小上限（字节）",
+                "单张大小上限（KB）",
                 "number",
-                min=100_000,
-                max=100_000_000,
-                step=1_000_000,
-                help="QQ 原图常见 5~10MB，别设太小",
+                min=100,
+                max=102_400,
+                step=1,
+                scale=1024,
+                help="QQ 原图常见 5~10MB（5120~10240KB）；这里按 KB 填，1MB = 1024KB",
             ),
             _f(
                 "images.max_side",

@@ -63,6 +63,33 @@ def test_page_and_schema(tmp_path: Path) -> None:
         assert payload["values"]["context.max_messages"] == 100
 
 
+def test_max_bytes_shown_in_kb_and_saved_as_bytes(tmp_path: Path) -> None:
+    client, path = _client(tmp_path)
+    with client:
+        payload = client.get("/api/config").json()
+        field = next(
+            item
+            for section in payload["sections"]
+            if section["id"] == "images"
+            for item in section["fields"]
+            if item["key"] == "images.max_bytes"
+        )
+        assert field["scale"] == 1024
+        assert field["label"].endswith("（KB）")
+        # 默认 20,000,000 字节在面板上显示成 19531.25 KB
+        assert payload["values"]["images.max_bytes"] == 19531.25
+
+        response = client.post(
+            "/api/config",
+            json={"updates": {"images.max_bytes": 8192}},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["values"]["images.max_bytes"] == 8192
+
+    text = path.read_text(encoding="utf-8")
+    assert "max_bytes = 8388608" in text
+
+
 def test_save_writes_toml_and_applies(tmp_path: Path) -> None:
     client, path = _client(tmp_path)
     with client:
@@ -247,6 +274,17 @@ def _make_plugin(root: Path, name: str) -> Path:
     (folder / "plugin.toml").write_text(f'title = "{name}"\n', encoding="utf-8")
     (folder / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
     return folder
+
+
+def test_plugin_list_has_stable_name_order_and_install_time(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _make_plugin(plugin_dir, "zeta")
+    _make_plugin(plugin_dir, "alpha")
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        items = client.get("/api/plugins").json()["plugins"]
+        assert [item["name"] for item in items] == ["alpha", "zeta"]
+        assert all(item["installed_at"] > 0 for item in items)
 
 
 def test_plugin_delete_keeps_data_by_default(tmp_path: Path) -> None:
