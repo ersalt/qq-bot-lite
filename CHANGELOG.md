@@ -3,7 +3,9 @@
 版本号唯一来源是根目录的 `VERSION` 文件；本文件只写标题，不重复定义版本值。
 对比基线是**上一个已发布 tag**；首个版本没有基线。
 
-## Unreleased
+## v0.3.0 — 2026-11-05
+
+> 以下变更以 `v0.2.0` 为基线。
 
 ### 变更
 
@@ -18,7 +20,7 @@
 - 插件卡片新增「文档」：读取插件根目录的 README（大小写不敏感，超过 256KB 截断），弹窗按原文展示，不渲染 HTML。
 - 插件卡片新增「重载」：只卸载/重载这一个插件（先跑 `on_stop`、取消后台任务、清掉子模块缓存），router 变更提示需重启进程。
 - 插件卡片新增「删除」：二次确认（弹窗 + 必勾“不可恢复”），可选只删插件或连 `data/plugin_data/<id>/` 一起删；删除先卸载、目录改名为隐藏临时目录再清理，已启用插件同步从配置移除。
-- 插件页新增「安装 ZIP」：支持 `<插件id>/plugin.toml` 文件夹布局，或 ZIP 根目录直接放 `plugin.toml`（ZIP 文件名作插件 id，非法字符转下划线）；拒绝绝对路径、`..`、符号链接、加密包和超限包，自动忽略 `__MACOSX/`、`.DS_Store`；先解压到隐藏临时目录、清单有效后才落位，同名不覆盖，安装后默认不启用。
+- 插件页新增「安装 ZIP」：支持 `<插件id>/plugin.toml` 文件夹布局，或 ZIP 根目录直接放 `plugin.toml`（ZIP 文件名作插件 id，非法字符转下划线）；拒绝绝对路径、`..`、符号链接、加密包和超限包，自动忽略 `__MACOSX/`、`.DS_Store`；先解压到隐藏临时目录、清单有效后才落位，同名不覆盖，手动安装的 ZIP 默认不启用；内置插件在 config.example.toml 中默认启用。
 - `plugin.toml` 新增可选 `id`（必须等于目录名；根目录布局 ZIP 里写了就用它当 id）和 `repository`（GitHub/仓库链接，卡片显示）；id 不一致的插件会显示错误卡，安装也会拒绝。
 - `app_version` 不再只读：加载时按 SemVer 范围和当前 `VERSION` 比较，不满足只警告（卡片黄色提示 + 日志），不拦加载；支持 `>=0.3` 或直接写 `0.3`（按最低版本）。
 - 修复多人插话时回复算错人：assistant 消息记录 `reply_to`（触发它的 user 消息 id），历史按 id 配对而不是“紧挨着的 user”，老数据没有链接时退回旧逻辑。
@@ -37,9 +39,14 @@
 - 设置页和插件设置弹窗的下拉框改成自绘 `uiSelect`：参考 SnowLuma 调试台，40px 触发框 + 10px 浮层、32px 选项、选中勾、上下翻转；支持 ↑↓/Home/End/Enter/Space/Esc/Tab/字母定位。弹窗内浮层挂到 `dialog`，不再被 `overflow` 裁切。
 - 模型/人设新建重名或空名时，输入框标红 + 行内 `.err` 提示，聚焦并全选输入，不再只依赖底部 toast。
 - 主面板通知改成顶部 `.toast-stack`：topbar 下 12px，最多 3 条，新的在上；成功 3.2s、错误 5.2s，底部 2px 进度条从右往左走完，点击 / Enter / Space / Esc 立即关闭；弹窗打开时挂到该 `dialog` 里，避免被 modal 的 inert 挡住。插件页旧的 `.toast` 样式先保留。
-- 新增 model-facing 工具协议（`api = 2`）：插件导出 `TOOLS` / `tools()`，宿主用 `LLMClient.complete_message()` 保留 `tool_calls`，`ToolRunner` 执行并回填 `role=tool`；工具对话只在本次请求里，不写持久历史，私聊才暴露工具。`api=1` 老插件继续兼容；设计见 `docs/bot-space.md`。
+- 新增 model-facing 工具协议（`api = 2`）：插件导出 `TOOLS` / `tools()`，宿主用 `LLMClient.complete_message()` 保留 `tool_calls`，`ToolRunner` 执行并回填 `role=tool`；工具对话只在本次请求里，不写持久历史，工具对所有会话开放。`api=1` 老插件继续兼容；契约见 `docs/plugin.md`。
+- 两个内置插件随主仓库分发完整副本：`whale_lexicon 0.6.0`、`bot_space 0.5.2`，含 tests/docs，默认启用；主要开发仍在插件项目，协作规则见 `docs/plugin-integration.md`。
+- WebUI 主面板新增「文档」页签，使用 `/api/docs` 读取仓库内 Markdown；不再提供独立 `/manual` 页面。
+- 主面板页签栏最后新增「关于」；关于页展示版本、本地优先说明、文档入口、GitHub 和 MIT License。
+- 设置行和插件设置弹窗移除配置 key 小字和长帮助，只保留必要短提示；详细说明统一放「文档」页签。
+- 页签铺满底部横线，关于卡内容与卡片内边距对齐；主面板弹窗补充 `dialog-out` 退场和 Esc/cancel 拦截。
+- 文档与 AGENTS 整理：补齐设置/API/插件协作文档，删除重复的 BOT空间主项目设计稿、孤立截图和过时部署说明。
 
-（下一版在这里记）
 
 ## v0.2.0 — 2026-11-04
 
