@@ -257,7 +257,9 @@
   （≤720px 时全屏，Markdown 需要宽度），圆角 16，白底，软阴影。
 - 结构：`header`（标题 15/600 + 说明 12.5）→ `section`（可滚，最大 86vh）→ `footer`
   （左：次要动作；右：取消 + 主操作）。**右上角不再放 X**，关闭走 footer、遮罩或 Esc。
-- 遮罩 `oklch(0 0 0 / .35)`；打开 240ms，关闭 160ms。
+- 遮罩 `oklch(0 0 0 / .35)`；打开 240ms，关闭 180ms。
+- 关闭不能直接 `dialog.close()`：先挂 `.is-closing` 播 `dialog-out`，`animationend` 后再 close/remove；
+  330ms 兜底，`prefers-reduced-motion` 下直接关。Esc 走 `cancel` 拦截，避免原生瞬间关闭。
 - 危险操作二次确认：在同一弹窗内切换内容，不叠第二个弹窗。
 
 ### 5.11 离线文档页 / 文档页签

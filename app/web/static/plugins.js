@@ -257,7 +257,7 @@ async function installPlugin(file, button) {
 }
 
 function openInstallDialog() {
-  closeDialog();
+  closeDialog(true);
   const panel = document.createElement("dialog");
   panel.id = "dialog";
   panel.className = "modal install";
@@ -550,7 +550,7 @@ async function togglePlugin(plugin, enabled, input) {  input.disabled = true;
 /* ---------- 删除弹窗 ---------- */
 
 function openDeleteDialog(plugin) {
-  closeDialog();
+  closeDialog(true);
   const panel = document.createElement("dialog");
   panel.id = "dialog";
   panel.className = "modal";
@@ -669,7 +669,7 @@ async function openReadmeDialog(plugin) {
 }
 
 function buildReadmeDialog(plugin, data) {
-  closeDialog();
+  closeDialog(true);
   const panel = document.createElement("dialog");
   panel.id = "dialog";
   panel.className = "modal readme";
@@ -734,7 +734,7 @@ async function openPluginDialog(plugin) {
 }
 
 function buildPluginDialog(plugin, fields, values) {
-  closeDialog();
+  closeDialog(true);
   // 原生 <dialog>：焦点陷阱、ESC、背景遮罩都由浏览器负责
   const panel = document.createElement("dialog");
   panel.id = "dialog";
@@ -911,9 +911,67 @@ function buildDialogField(field, value, host) {
   return read;
 }
 
-function closeDialog() {
+function closeDialog(immediate = false) {
   const node = $("dialog");
   if (!node) return;
-  if (typeof node.close === "function") node.close();
-  node.remove();
+  if (node.classList.contains("is-closing")) {
+    // 新弹窗要立刻替换旧弹窗时，不能等旧弹窗的退场动画结束
+    if (immediate) {
+      try {
+        node.close();
+      } catch (error) {
+        // 已关闭就只移除
+      }
+      node.remove();
+    }
+    return;
+  }
+  const finish = () => {
+    if (typeof node.close === "function") {
+      try {
+        node.close();
+      } catch (error) {
+        // 已经关闭时 close() 可能抛错，直接移除即可
+      }
+    }
+    node.remove();
+  };
+  if (
+    immediate ||
+    !node.open ||
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    finish();
+    return;
+  }
+
+  // close() 会摘掉 [open]，先挂 is-closing 让退场动画有播放窗口。
+  node.classList.add("is-closing");
+  let timer = 0;
+  let done = false;
+  const settle = () => {
+    if (done) return;
+    done = true;
+    window.clearTimeout(timer);
+    node.removeEventListener("animationend", onEnd);
+    finish();
+  };
+  const onEnd = (event) => {
+    if (event.target === node && event.animationName === "dialog-out") settle();
+  };
+  node.addEventListener("animationend", onEnd);
+  // 系统动画被吞掉时兜底，不能把弹窗永久挂住
+  timer = window.setTimeout(settle, 330);
 }
+
+// 原生 Esc 会直接 cancel 并关闭 dialog，先拦住，统一走退场动画。
+document.addEventListener(
+  "cancel",
+  (event) => {
+    const node = event.target;
+    if (!(node instanceof HTMLDialogElement) || node.id !== "dialog") return;
+    event.preventDefault();
+    if (!node.classList.contains("is-closing")) closeDialog();
+  },
+  true,
+);

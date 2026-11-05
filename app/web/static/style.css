@@ -927,6 +927,14 @@ details.card .card-pad { padding-top: 4px; }
   overflow: hidden;
 }
 .modal[open] { animation: dialog-in var(--dur-3) var(--ease-spring-soft); }
+/* close() 会立刻摘掉 [open]，所以退场要先挂 is-closing，等动画跑完再真正 close()。 */
+.modal[open].is-closing {
+  pointer-events: none;
+  animation: dialog-out var(--dur-2) var(--ease-out-quart) forwards;
+}
+.modal[open].is-closing::backdrop {
+  animation: backdrop-out var(--dur-2) var(--ease-out-quart) forwards;
+}
 /* 下拉浮层/通知挂在 dialog 里时，打开期间让 dialog 别再裁掉它们 */
 .modal.select-open, .modal.toast-open { overflow: visible; }
 .modal::backdrop {
@@ -1286,6 +1294,14 @@ details.card .card-pad { padding-top: 4px; }
 @keyframes dialog-in {
   from { opacity: 0; transform: translateY(8px) scale(.97); }
   to { opacity: 1; transform: none; }
+}
+@keyframes dialog-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px) scale(.98); }
+}
+@keyframes backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 @keyframes fade-in {
   from { opacity: 0; }
