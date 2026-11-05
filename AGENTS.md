@@ -95,6 +95,8 @@ docs/                 guide.md（用户指南）、settings.md（设置说明）
 - 异常隔离：任一钩子抛异常只记 `last_error`，不影响聊天。
 - 面板可看 README、热重载、删除（可选连 `data/plugin_data/<id>/` 一起）、安装 ZIP
   （只收 `<插件id>/plugin.toml` 单顶层目录，8MB/64MB 上限，装完默认启用）。
+- 内置插件与主项目的边界、宿主请求和交接格式见 `docs/plugin-integration.md`；
+  插件改 UI 前先走这份约定。
 
 ## 常见坑
 

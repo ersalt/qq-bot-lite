@@ -30,6 +30,7 @@ DOC_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
             ("development.md", "开发文档"),
             ("api.md", "SDK 与 API"),
             ("plugin.md", "插件规范"),
+            ("plugin-integration.md", "插件协作"),
             ("local-first.md", "本地优先取舍"),
             ("ui-spec.md", "界面规范"),
             ("log-spec.md", "日志格式"),

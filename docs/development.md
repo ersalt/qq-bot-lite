@@ -3,7 +3,7 @@
 > 这份文档面向**改代码、写插件、维护发布的人**。部署和使用见[使用指南](guide.md)。
 >
 > 现有深水区文档仍然有效，按需跳转：
-> [插件规范](plugin.md) · [SDK 与 API](api.md) · [设置说明](settings.md) ·
+> [插件规范](plugin.md) · [插件协作](plugin-integration.md) · [SDK 与 API](api.md) · [设置说明](settings.md) ·
 > [本地优先取舍](local-first.md) · [界面规范](ui-spec.md) · [日志格式](log-spec.md) ·
 > [BOT空间设计](bot-space.md)（内部设计记录，不是用户手册）。
 
