@@ -571,9 +571,11 @@ class ChatService:
         return await self.llm.complete(messages, override=override)
 
     def _tools_for(self, event: MessageEvent) -> dict[str, ToolEntry]:
-        """工具只在私聊暴露；群聊永远不给空间工具。"""
-        if event.is_group:
-            return {}
+        """工具对所有会话暴露；手记不分群聊私聊，不按会话类型分流。
+
+        event 参数保留：以后若有全局策略（配置、插件级开关）仍可能需要它；
+        但不要在这里用 is_group 决定给不给工具。
+        """
         return self.extensions.collect_tools()
 
     # ---------- 杂项 ----------
@@ -736,7 +738,7 @@ class ChatService:
 
         原来每来一条消息就 recent(100)，最旧那条被挤掉，前缀整个位移，
         llama.cpp 只能从零重新预填充（实测 1668 token ≈ 2.5 秒）。
-        这里改成按锚点取：窗口从 60% 涨到 125% 才推进一次锚点，
+        这里改成按锚点取：窗口从上限涨到 125% 才推进一次锚点，
         平时只是往尾部追加，前缀不动，缓存就能复用。
 
         注意必须取“锚点之后最新的 N 条”，不能取最早的 N 条：

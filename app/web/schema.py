@@ -193,7 +193,7 @@ SECTIONS: list[dict[str, Any]] = [
                 "number",
                 min=10,
                 max=500,
-                help="只算它接过的轮次；锚点窗口在 60%~125% 之间浮动，40 条约 20 轮",
+                help="只算它接过的轮次；锚点窗口在 100%~125% 之间浮动，40 条约 20 轮",
             ),
             _f(
                 "context.max_tokens",

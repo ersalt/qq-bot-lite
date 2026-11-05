@@ -12,7 +12,7 @@ import pytest
 
 from app.config import Config, LLMConfig
 from app.core.pipeline import ChatService
-from app.core.tool_runner import ToolRunner
+from app.core.tool_runner import TOOL_CONTEXT_NOTE, ToolRunner
 from app.llm.client import LLMClient
 from app.pluginkit.manifest import PluginContext, read_manifest
 from app.pluginkit.registry import Extension, ExtensionRegistry, HookContext
@@ -174,7 +174,9 @@ async def test_tool_runner_executes_and_does_not_mutate_messages(tmp_path: Path)
     assert [item["role"] for item in second] == ["user", "assistant", "tool"]
     assert second[-1]["tool_call_id"] == "call_1"
     payload = json.loads(second[-1]["content"])
-    assert payload == {"ok": True, "result": {"echo": "hi"}}
+    assert payload["ok"] is True
+    assert payload["result"] == {"echo": "hi"}
+    assert payload["context_note"] == TOOL_CONTEXT_NOTE
 
 
 @pytest.mark.asyncio
@@ -312,7 +314,7 @@ async def test_chat_pieces_uses_tools_and_keeps_history_clean(tmp_path: Path) ->
     assert harness.calls[0][1]
 
 
-def test_tools_are_private_only(tmp_path: Path) -> None:
+def test_tools_available_in_all_sessions(tmp_path: Path) -> None:
     async def echo(ctx, args):
         return args
 
@@ -325,7 +327,7 @@ def test_tools_are_private_only(tmp_path: Path) -> None:
     service = object.__new__(ChatService)
     service.extensions = registry
     assert "echo" in service._tools_for(SimpleNamespace(is_group=False))
-    assert service._tools_for(SimpleNamespace(is_group=True)) == {}
+    assert "echo" in service._tools_for(SimpleNamespace(is_group=True))
 
 
 def test_api_version_two_and_old_plugins_still_load(tmp_path: Path) -> None:

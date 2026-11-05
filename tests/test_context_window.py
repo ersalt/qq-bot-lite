@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.config import ContextConfig
 from app.context.store import MessageStore, StoredMessage
 from app.context.window import build_ambient, build_history, keep_addressed, pick_anchor_window
+from app.llm.prompt import build_messages
 
 
 def _store(tmp_path) -> MessageStore:
@@ -74,6 +75,50 @@ def test_anchor_window_keeps_the_latest_turn(tmp_path):
         assert window[-1].content == "latest answer"
     finally:
         store.close()
+
+
+def test_anchor_window_keeps_the_limit_instead_of_60_percent():
+    messages = [_msg(index, "user", f"m{index}") for index in range(1, 101)]
+    window, anchor = pick_anchor_window(messages, 40)
+    assert len(window) == 40
+    assert window[-1].id == 100
+    assert anchor == window[0].id - 1
+
+
+def test_build_messages_keeps_replies_to_different_users_separate():
+    messages = [
+        _msg(1, "user", "A 问", speaker="alice"),
+        _msg(2, "user", "B 问", speaker="bob"),
+        _msg(3, "assistant", "答 A", reply_to=1),
+        _msg(4, "assistant", "答 B", reply_to=2),
+    ]
+    history = build_history(messages, ContextConfig(), is_group=True)
+    built = build_messages("system", history, "当前")
+
+    assert [item["role"] for item in built] == [
+        "system",
+        "user",
+        "user",
+        "assistant",
+        "assistant",
+        "user",
+    ]
+    assert built[3]["content"] == "答 A"
+    assert built[4]["content"] == "答 B"
+    assert all("_reply_to" not in item for item in built)
+
+
+def test_build_messages_merges_replies_to_the_same_user():
+    messages = [
+        _msg(1, "user", "问", speaker="alice"),
+        _msg(2, "assistant", "答一", reply_to=1),
+        _msg(3, "assistant", "答二", reply_to=1),
+    ]
+    history = build_history(messages, ContextConfig(), is_group=True)
+    built = build_messages("system", history, "当前")
+
+    assert [item["role"] for item in built] == ["system", "user", "assistant", "user"]
+    assert built[2]["content"] == "答一\n答二"
 
 
 def test_keep_addressed_drops_chatter_and_trailing_backlog():

@@ -113,7 +113,7 @@ docs/                 local-first.md（定位与实测）、plugin.md（插件�
 - **通知统一走 `toast()`**：主面板顶部 `.toast-stack`，弹窗打开时自动挂到该 `dialog` 里；不要再写
   底部 `.toast`（旧样式只留给插件页）。新建重名这类表单错误同时给行内 `.err`，不能只靠通知。
 - **工具和命令是两套东西**：`COMMANDS` 是用户输入 `/xxx`；`TOOLS` 是模型自己调用的工具。
-  工具对话只在本次请求里，**不落持久历史**；当前只在私聊把工具交给模型，群聊不暴露。
+  工具对话只在本次请求里，**不落持久历史**；工具对所有会话暴露，不按群聊/私聊分流。
   工具执行必须走 `ToolRunner`，不要绕过 `_llm_slot` 直接并发调模型。
 - `python -m app.pluginkit.check` 在 GBK 控制台会因 `✓` 编码报错：先
   `$env:PYTHONIOENCODING = "utf-8"` 再跑（不是代码问题）。

@@ -113,15 +113,16 @@ def build_ambient(
 def pick_anchor_window(
     messages: list[StoredMessage], limit: int
 ) -> tuple[list[StoredMessage], int | None]:
-    """按 60%~125% 水位挑锚点窗口。
+    """按 100%~125% 水位挑锚点窗口。
 
     返回 (窗口, 新锚点)；新锚点为 None 表示还没到上限，不推进。
-    比上限多时一次退到 60%，让前缀稳定一段时间，而不是每条挤掉一条。
+    比上限多时一次退到上限（而不是 60%），避免 50 条突然掉到 24 条那种
+    大幅失忆；代价是锚点推进频率略高，但上下文连续性更好。
     """
     hard = max(int(limit * 1.25), 10)
     if len(messages) <= hard:
         return messages, None
-    keep_count = max(int(limit * 0.6), 10)
+    keep_count = max(limit, 10)
     start = max(len(messages) - keep_count, 0)
     # 别从半轮开始：如果切在 assistant 上，把它前面配对的 user 一起带上，
     # 否则模型会看到一句没头没尾的“自己说过的话”。
@@ -140,6 +141,7 @@ def build_history(
 ) -> list[dict[str, Any]]:
     """messages 为从旧到新的顺序，返回同样顺序的 chat messages（不含当前这条）。"""
     items: list[dict[str, Any]] = []
+    by_id = {message.id: message for message in messages}
     for message in messages:
         if message.role == "assistant" and not cfg.include_bot_replies:
             continue
@@ -147,6 +149,14 @@ def build_history(
         if not text:
             continue
         item: dict[str, Any] = {"role": message.role, "content": text}
+        if message.role == "assistant" and message.reply_to:
+            target = by_id.get(message.reply_to)
+            if target is not None and target.role == "user":
+                # 只作为内部合并边界，不发给模型；避免把回给 A 和回给 B 的
+                # 两条 assistant 合并成一段，模型就分不清哪句在回谁。
+                item["_reply_to"] = target.speaker or (
+                    str(target.user_id) if target.user_id else "某人"
+                )
         if message.images:
             # 路径留着，发请求前由 pipeline 决定要不要把图真的带上。
             item["images"] = list(message.images)
