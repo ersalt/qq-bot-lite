@@ -341,7 +341,8 @@ async def test_symlink_escape_rejected(store: SpaceStore, tmp_path: Path) -> Non
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError):
         pytest.skip("当前环境不允许创建符号链接")
-    with pytest.raises(SpaceError, match="符号链接"):
+    # Linux 上 resolve 可能先判定为越界；两种错误都说明符号链接逃逸被拒绝
+    with pytest.raises(SpaceError, match="符号链接|路径越界"):
         store.read("link/secret.md")
 
 
