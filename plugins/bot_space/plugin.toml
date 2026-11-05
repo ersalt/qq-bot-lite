@@ -1,9 +1,10 @@
-title = "BOT空间"
+title = "鲸鱼空间"
 description = "模型自己决定写什么的 Markdown 手记，群聊私聊共用一份；用户只读查看。"
-version = "0.5.3"
+version = "0.5.4"
 author = "贰叔"
 api = 2
 app_version = ">=0.2.0"
+repository = "https://github.com/ersalt/bot_space"
 panel = "/plugins/bot_space"
 
 # ---------- 权限 ----------

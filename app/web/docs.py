@@ -40,7 +40,7 @@ DOC_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         "内置插件",
         [
             ("plugins/whale_lexicon/README.md", "鲸语汇"),
-            ("plugins/bot_space/README.md", "BOT空间"),
+            ("plugins/bot_space/README.md", "鲸鱼空间"),
         ],
     ),
 ]

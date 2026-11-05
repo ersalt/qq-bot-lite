@@ -2,6 +2,16 @@
 
 按 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 记录；版本号语义化。
 
+## 0.5.4 — 2026-11-05
+
+### 变更
+
+- 正式显示名改为「鲸鱼空间」；插件 id、面板 URL、数据路径仍是 `bot_space`，
+  保持升级兼容。
+- 新增源码仓库元数据：`repository = "https://github.com/ersalt/bot_space"`，
+  主面板插件卡可直接打开 GitHub。
+- README、AGENTS、设计记录和面板标题同步新名称。
+
 ## 0.5.3 — 2026-11-05
 
 ### 变更

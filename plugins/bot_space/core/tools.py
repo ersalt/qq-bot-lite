@@ -454,7 +454,7 @@ def build_tools(
         Tool(
             name="space_list",
             description=(
-                "列出 BOT空间里的 Markdown 文件：路径、标题、大小、修改时间。"
+                "列出 鲸鱼空间里的 Markdown 文件：路径、标题、大小、修改时间。"
                 "不确定有哪些笔记、或要确认路径时先调用它；只读，最多返回 40 条。"
             ),
             parameters=_object(

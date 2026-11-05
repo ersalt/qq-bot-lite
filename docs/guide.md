@@ -23,7 +23,7 @@ QQ ↔ SnowLuma ↔ qq-bot-lite（8790） ↔ LM Studio（1234）
 | 插件 | 作用 |
 |---|---|
 | 鲸语汇 `whale_lexicon` | 从群聊里学习黑话，命中时注入提示；带独立面板 |
-| BOT空间 `bot_space` | bot 自己写的 Markdown 手记，模型用工具读写，用户只读查看 |
+| 鲸鱼空间 `bot_space` | bot 自己写的 Markdown 手记，模型用工具读写，用户只读查看 |
 
 ## 2. 准备
 
@@ -56,7 +56,7 @@ Invoke-WebRequest -Method POST -Uri http://127.0.0.1:8790/api/shutdown
 ```text
 config/config.toml      本机配置，不入库
 data/app.db             会话数据库
-data/plugin_data/       插件数据（鲸语汇词库、BOT空间手记）
+data/plugin_data/       插件数据（鲸语汇词库、鲸鱼空间手记）
 data/images/            历史图片本地副本
 logs/                   每次启动一个日志，latest.txt 指向最新
 personas/               人设 Markdown
@@ -152,7 +152,7 @@ model = "qwen3.8-27b"
 - 40 条约等于 20 轮；锚点窗口会在 100%~125% 之间浮动，超过 125% 才回落到上限；
 - 还会被 `[context] max_tokens` 二次裁剪；图片和群聊 ambient 另行占预算。
 
-所以日志里偶尔看到 46 条不是 bug。要它记长期的事，优先用 BOT空间的手记，不要把窗口无脑拉大。
+所以日志里偶尔看到 46 条不是 bug。要它记长期的事，优先用鲸鱼空间的手记，不要把窗口无脑拉大。
 
 ### 图片大小
 
@@ -186,7 +186,7 @@ model = "qwen3.8-27b"
 
 完整说明见 [鲸语汇 README](../plugins/whale_lexicon/README.md)。
 
-### 7.2 BOT空间（bot_space）
+### 7.2 鲸鱼空间（bot_space）
 
 bot 的私人 Markdown 手记，全局一份，不分群聊私聊：
 
@@ -205,9 +205,9 @@ bot 的私人 Markdown 手记，全局一份，不分群聊私聊：
 | 手记总量上限 | 10MB | 含回收站 |
 | 单次读取上限 | 6000 字 | 长文用 `offset` 续读 |
 
-数据在 `data/plugin_data/bot_space/space/`。面板在「插件」→ BOT空间 → 打开面板。
+数据在 `data/plugin_data/bot_space/space/`。面板在「插件」→ 鲸鱼空间 → 打开面板。
 
-完整说明见 [BOT空间 README](../plugins/bot_space/README.md)；开发设计记录只看插件源码里的
+完整说明见 [鲸鱼空间 README](../plugins/bot_space/README.md)；开发设计记录只看插件源码里的
 `plugins/bot_space/docs/`，不放进普通用户文档。
 
 ### 7.3 插件管理
@@ -271,7 +271,7 @@ bot 的私人 Markdown 手记，全局一份，不分群聊私聊：
 
 - 默认只留接过的问答轮次，群聊闲话不进持久历史；
 - 40 条是软上限，还会被 token 预算裁剪；
-- 长期记忆让它写进 BOT空间，而不是指望上下文窗口。
+- 长期记忆让它写进鲸鱼空间，而不是指望上下文窗口。
 
 **插件装完没反应？**
 

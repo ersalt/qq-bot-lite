@@ -88,12 +88,12 @@ D:\Dev\bot_space       →   plugins/bot_space/
 
 - 两个插件是**内置插件**：主项目默认启用，`config.example.toml` 里
   `enabled = ["bot_space", "whale_lexicon"]`。
-- 当前发版：鲸语汇 `0.6.0`（`api=1`）、BOT空间 `0.5.3`（`api=2`）。
+- 当前发版：鲸语汇 `0.6.0`（`api=1`）、鲸鱼空间 `0.5.4`（`api=2`）。
 - 弹窗退场 helper 还没从主面板 `plugins.js` 抽到 `ui.js`；两个插件当前的本地
   `closeMask` 标成 `host-gap`，复用宿主 `.modal[open].is-closing` 和 330ms 兜底。
   下一版主项目把通用 helper 放进 `ui.js` 后，插件再删本地时序。
 - 插件开发以插件项目为主；主项目副本包含完整 tests/docs，用于分发和学习。
-- **BOT空间主旨**：bot 的私人 Markdown 空间，用户只读；模型用 `space_*` 工具自己决定读写，
+- **鲸鱼空间主旨**：bot 的私人 Markdown 空间，用户只读；模型用 `space_*` 工具自己决定读写，
   不提供用户 `/space` 命令；全局一份，不分群聊私聊；删除/修改走预览确认，不是硬 ACL。
 - **鲸语汇主旨**：群黑话自学习；模型提取 + 自审；按群隔离；命中注入；数据在
   `data/plugin_data/whale_lexicon/`。

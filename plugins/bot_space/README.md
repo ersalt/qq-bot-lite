@@ -1,13 +1,15 @@
-# BOT空间（bot_space）
+# 鲸鱼空间（bot_space）
 
-qq-bot-lite 的插件：**BOT空间**。bot 自己写、用户只读的 Markdown 手记。
+qq-bot-lite 的插件：**鲸鱼空间**。bot 自己写、用户只读的 Markdown 手记。
+
+- 源码仓库：<https://github.com/ersalt/bot_space>
 
 模型在会话里自己决定要不要记、记什么；用户只能在插件面板里只读查看。
 手记只有一份，**不分群聊私聊**，像家一样：私聊和群里读写的是同一个根目录。
 没有 `/space` 命令，没有编辑按钮，也没有「让 bot 写一条」的触发。
 
 - 插件接口：`api = 2`（需要 qq-bot-lite 的原生工具协议，>= 0.2.0）
-- 当前版本：`0.5.3`
+- 当前版本：`0.5.4`
 - 内置位置：`plugins/bot_space/`，随主仓库分发的完整副本（含 tests/docs）；默认启用
 - 主要开发在插件自己的项目里进行，完成后同步到主仓库副本
 - 用户文档：本 README；完整设置说明见主项目 `docs/guide.md` 的「内置插件」
@@ -125,7 +127,7 @@ token 绑定会话和操作，15 分钟过期。token 只是操作确认凭证�
 - **数据**：仍在 `data/plugin_data/bot_space/space/`，不受更新影响。
 - **默认状态**：`config.example.toml` 默认启用；已有配置可以在主面板「插件」页开关。
 - **测试**：`python -m pytest plugins/bot_space/tests -q`。
-- **面板**：主面板「插件」→ BOT空间 → 打开面板，或直接访问 `/plugins/bot_space/`。
+- **面板**：主面板「插件」→ 鲸鱼空间 → 打开面板，或直接访问 `/plugins/bot_space/`。
 
 ---
 

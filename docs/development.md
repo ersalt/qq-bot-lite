@@ -5,7 +5,7 @@
 > 现有深水区文档仍然有效，按需跳转：
 > [插件规范](plugin.md) · [插件协作](plugin-integration.md) · [SDK 与 API](api.md) · [设置说明](settings.md) ·
 > [本地优先取舍](local-first.md) · [界面规范](ui-spec.md) · [日志格式](log-spec.md)。
-> BOT空间的内部设计记录在插件源仓库 `plugins/bot_space/docs/`，不放进用户文档页。
+> 鲸鱼空间的内部设计记录在插件源仓库 `plugins/bot_space/docs/`，不放进用户文档页。
 
 ## 1. 仓库地图
 
@@ -180,7 +180,7 @@ TOOLS = [
 - 测试：`plugins/whale_lexicon/tests/`
 - 数据：`data/plugin_data/whale_lexicon/jargon.db`
 
-### 7.2 BOT空间
+### 7.2 鲸鱼空间
 
 - 入口：`plugins/bot_space/plugin.py`
 - 核心：`core/space.py`（路径、配额、原子写、审计）、`core/tools.py`（十个工具）

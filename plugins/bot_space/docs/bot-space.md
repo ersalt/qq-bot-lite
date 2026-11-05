@@ -1,6 +1,6 @@
 # bot_space 设计记录（Phase 2 已实现）
 
-> 状态：v0.5.3，已是 qq-bot-lite 的**内置插件**，源码在 `qq-bot-lite/plugins/bot_space/`，
+> 状态：v0.5.4，已是 qq-bot-lite 的**内置插件**，源码在 `qq-bot-lite/plugins/bot_space/`，
 > 随主仓库跟踪和测试，不再维护独立部署副本。
 > 手记**全局一份，不分群聊私聊**；插件侧不按 `is_group` 限制。主项目 `_tools_for` 已对所有会话暴露工具。
 > 这页保留「为什么做、做成什么样、哪些不能做」；安装/使用细节以 `README.md` 为准，
@@ -11,7 +11,7 @@
 
 ## 0. 一句话
 
-`bot_space` 是 bot 的 Markdown 手记（显示名「BOT空间」）。插件**只向模型提供工具，不提供用户命令**；
+`bot_space` 是 bot 的 Markdown 手记（显示名「鲸鱼空间」）。插件**只向模型提供工具，不提供用户命令**；
 模型自己决定要不要读写，用户不通过 `/命令` 强行操控。主项目只增加通用的「工具协议 +
 工具循环」，具体工具全部留在插件里。
 
@@ -257,9 +257,9 @@ TOOLS = [
 
 ```toml
 api = 2
-title = "BOT空间"
+title = "鲸鱼空间"
 description = "模型自己决定写什么的 Markdown 手记；用户只读查看。"
-version = "0.5.3"
+version = "0.5.4"
 panel = "/plugins/bot_space"
 
 [[config]]
@@ -403,7 +403,7 @@ data/plugin_data/bot_space/
 ## 9. 当前实现与协作
 
 - Phase 1（宿主工具协议 `complete_message` / `Tool` / `ToolRunner` / `api=2`）已完成。
-- Phase 2（bot_space v0.5.3：十个工具、只读面板、回收站、删除/读取授权）已完成，并内置到
+- Phase 2（bot_space v0.5.4：十个工具、只读面板、回收站、删除/读取授权）已完成，并内置到
   `plugins/bot_space/`，随主仓库跟踪和测试。
 - Phase 3（L3 自主触发）**尚未实现**；下面的 L3 描述是设计约束，不是当前行为。
 - 插件源码在 `D:\Dev\bot_space`（独立 git）；主项目 `plugins/bot_space/` 是完整副本。
