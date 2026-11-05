@@ -14,7 +14,7 @@
 D:\Dev\qq-bot-lite       本仓库（Python 3.12，venv 在 .venv）
 GitHub: ersalt/qq-bot-lite
   main     已发布（v0.2.0）
-  develop  开发主线，当前比 main 多 3 个提交
+  develop  开发主线（领先 main 的提交数按 git 实际为准）
 ```
 
 - 版本号唯一来源：根目录 `VERSION`。改它必须同步改 `CHANGELOG.md` 的标题（`## vX.Y.Z — 日期`），
@@ -63,9 +63,9 @@ app/
 plugins/              插件（只从这里加载；_template 是骨架）
 personas/             人设 Markdown
 docs/                 guide.md（用户指南）、settings.md（设置说明）、development.md（开发文档）、
-                      api.md（SDK/API）、local-first.md（定位与实测）、plugin.md（插件开发）、
-                      log-spec.md（日志格式）、ui-spec.md（界面契约）、bot-space.md（内部设计记录）；
-                      WebUI「文档」页签本地阅读
+                      api.md（SDK/API）、plugin-integration.md（内置插件协作）、plugin.md（插件开发）、
+                      local-first.md、log-spec.md、ui-spec.md；WebUI「文档」页签本地阅读。
+                      BOT空间自己的设计记录在 plugins/bot_space/docs/，主项目不再重复一份
 ```
 
 ## 不能碰的设计
@@ -144,11 +144,13 @@ D:\Dev\
 历史工作区 `D:\Dev\bot-workspace` 已于 2026-11-04 归档到 `_archive\bot-workspace-legacy\`
 （含 git bundle 和全部文件）。那里面是 AstrBot 时代的知识库和排查手册，**不适用于本项目**。
 
-## 当前状态（2026-11-04）
+## 当前状态（2026-11-05）
 
 - `v0.2.0` 已发布：https://github.com/ersalt/qq-bot-lite/releases/tag/v0.2.0
-- 面板已按 `docs/ui-spec.md` 重排：顶栏 + 页头 + 页内页签 + 白卡行式，动效见规范第 7 节。
-- 文档：guide / settings / development / api 入口，local-first / plugin / log-spec / ui-spec / bot-space
-  作为深入参考；WebUI「文档」页签读同一套本地 Markdown，不依赖外部站点。
+- 面板：顶栏 + 页头 + 页内页签 + 白卡行式；页签最后是「文档」「关于」；
+  设置小字只保留必要短 hint，配置 key 标签已移除；弹窗有打开/退场动画。
+- 文档：guide / settings / development / api / plugin-integration 入口；
+  local-first / plugin / log-spec / ui-spec 作为深入参考；WebUI「文档」页签读本地 Markdown。
 - 本机运行时：机器人在跑，LM Studio 加载 `qwen3.8-27b`（32768 ctx），SnowLuma 反连 8790。
-- 插件模型：`whale_lexicon` / `bot_space` 直接内置在 `plugins/`，与主仓库同测试、同发版。
+- 插件：`whale_lexicon` / `bot_space` 在主仓库有完整内置副本（tests/docs）；
+  主要开发仍在各自插件项目，按 `docs/plugin-integration.md` 同步。

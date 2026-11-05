@@ -4,8 +4,8 @@
 >
 > 现有深水区文档仍然有效，按需跳转：
 > [插件规范](plugin.md) · [插件协作](plugin-integration.md) · [SDK 与 API](api.md) · [设置说明](settings.md) ·
-> [本地优先取舍](local-first.md) · [界面规范](ui-spec.md) · [日志格式](log-spec.md) ·
-> [BOT空间设计](bot-space.md)（内部设计记录，不是用户手册）。
+> [本地优先取舍](local-first.md) · [界面规范](ui-spec.md) · [日志格式](log-spec.md)。
+> BOT空间的内部设计记录在插件源仓库 `plugins/bot_space/docs/`，不放进用户文档页。
 
 ## 1. 仓库地图
 
