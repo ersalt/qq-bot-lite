@@ -13,7 +13,7 @@
 ```
 D:\Dev\qq-bot-lite       本仓库（Python 3.12，venv 在 .venv）
 GitHub: ersalt/qq-bot-lite
-  main     已发布（v0.3.0）
+  main     已发布（v0.3.1）
   develop  开发主线（领先 main 的提交数按 git 实际为准）
 ```
 
@@ -146,13 +146,13 @@ D:\Dev\
 
 ## 当前状态（2026-11-05）
 
-- `v0.3.0` 已发布（2026-11-05）：内置鲸语汇 `0.6.0`、鲸鱼空间 `0.5.4`；
-  `main` 合入 `develop`，附加注 tag。上一个正式版 `v0.2.0`：
+- `v0.3.1` 已发布（2026-11-05）：修复 Linux CI 的符号链接测试断言，
+  内置鲸语汇 `0.6.0`、鲸鱼空间 `0.5.5`。上一个正式版 `v0.3.0`，再往前 `v0.2.0`：
   https://github.com/ersalt/qq-bot-lite/releases/tag/v0.2.0
 - 面板：顶栏 + 页头 + 页内页签 + 白卡行式；页签最后是「文档」「关于」；
   设置小字只保留必要短 hint，配置 key 标签已移除；弹窗有打开/退场动画。
 - 文档：guide / settings / development / api / plugin-integration 入口；
   local-first / plugin / log-spec / ui-spec 作为深入参考；WebUI「文档」页签读本地 Markdown。
 - 本机运行时：机器人在跑，LM Studio 加载 `qwen3.8-27b`（32768 ctx），SnowLuma 反连 8790。
-- 插件：`whale_lexicon 0.6.0` / `bot_space 0.5.4` 在主仓库有完整内置副本（tests/docs）；
+- 插件：`whale_lexicon 0.6.0` / `bot_space 0.5.5` 在主仓库有完整内置副本（tests/docs）；
   主要开发仍在各自插件项目，按 `docs/plugin-integration.md` 同步。
