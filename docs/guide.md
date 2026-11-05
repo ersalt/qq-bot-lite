@@ -28,7 +28,7 @@ QQ ↔ SnowLuma ↔ qq-bot-lite（8790） ↔ LM Studio（1234）
 
 - Windows 10/11（当前主要开发和验证环境）。
 - Python 3.12+；项目自带 `.venv` 启动脚本会自动创建。
-- [SnowLuma](https://github.com/) 或兼容 OneBot 11 的 QQ 端。
+- SnowLuma，或兼容 OneBot 11 的 QQ 端。
 - LM Studio，已下载一个能用的模型（当前默认 `qwen3.8-27b`）。
 - 本机端口：`8790`（qq-bot-lite）、`1234`（LM Studio，可改）。
 

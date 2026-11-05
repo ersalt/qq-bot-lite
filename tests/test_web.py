@@ -90,6 +90,12 @@ def test_max_bytes_shown_in_kb_and_saved_as_bytes(tmp_path: Path) -> None:
     assert "max_bytes = 8388608" in text
 
 
+def test_example_config_enables_builtin_plugins() -> None:
+    example = Path(__file__).resolve().parents[1] / "config" / "config.example.toml"
+    cfg = load_config(example)
+    assert cfg.extensions.enabled == ["bot_space", "whale_lexicon"]
+
+
 def test_local_docs_page_and_markdown_links(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     with client:
