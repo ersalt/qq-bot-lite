@@ -88,7 +88,7 @@ D:\Dev\bot_space       →   plugins/bot_space/
 
 - 两个插件是**内置插件**：主项目默认启用，`config.example.toml` 里
   `enabled = ["bot_space", "whale_lexicon"]`。
-- 当前发版：鲸语汇 `0.6.0`（`api=1`）、鲸鱼空间 `0.5.4`（`api=2`）。
+- 当前发版：鲸语汇 `0.6.0`（`api=1`）、鲸鱼空间 `0.5.5`（`api=2`）。
 - 弹窗退场 helper 还没从主面板 `plugins.js` 抽到 `ui.js`；两个插件当前的本地
   `closeMask` 标成 `host-gap`，复用宿主 `.modal[open].is-closing` 和 330ms 兜底。
   下一版主项目把通用 helper 放进 `ui.js` 后，插件再删本地时序。
