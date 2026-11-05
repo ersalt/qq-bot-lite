@@ -26,9 +26,9 @@ function docsPanel() {
     const link = event.target.closest("a");
     if (!link) return;
     const href = link.getAttribute("href") || "";
-    if (!href.startsWith("/manual/")) return;
+    if (!href.startsWith("#documents/")) return;
     event.preventDefault();
-    loadDoc(decodeURIComponent(href.slice("/manual/".length)));
+    loadDoc(decodeURIComponent(href.slice("#documents/".length)));
   });
 
   wrap.append(side, content);

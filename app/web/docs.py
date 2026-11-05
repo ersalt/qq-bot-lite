@@ -7,16 +7,14 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
-from .. import __version__
 from .markdown_render import render_markdown
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS_DIR = ROOT / "docs"
 PLUGINS_DIR = ROOT / "plugins"
-PAGE = Path(__file__).with_name("docs.html")
 
 DOC_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     (
@@ -51,7 +49,7 @@ _HREF_RE = re.compile(r'href="([^"]*)"')
 
 
 def _url_rel(path: Path) -> str:
-    """文档在 /manual/<url_rel> 里的相对路径。"""
+    """文档在文档页签里的相对路径。"""
     try:
         return path.relative_to(DOCS_DIR).as_posix()
     except ValueError:
@@ -83,7 +81,7 @@ def _title(path: Path, text: str) -> str:
 
 
 def _links(rendered: str, current: Path) -> str:
-    """把 Markdown 里的本地 .md 链接改成 /manual/...，其余链接原样保留。"""
+    """把 Markdown 里的本地 .md 链接改成 #documents/...，其余链接原样保留。"""
 
     def replace(match: re.Match[str]) -> str:
         target = html.unescape(match.group(1))
@@ -104,39 +102,12 @@ def _links(rendered: str, current: Path) -> str:
         if not inside:
             return match.group(0)
         rel = _url_rel(candidate)
-        url = f"/manual/{quote(rel, safe='/')}"
+        url = f"#documents/{quote(rel, safe='/')}"
         if fragment:
             url += f"#{fragment}"
         return f'href="{html.escape(url, quote=True)}"'
 
     return _HREF_RE.sub(replace, rendered)
-
-
-def _sidebar(active: str) -> str:
-    parts = ['<nav class="docs-nav">']
-    for title, entries in DOC_GROUPS:
-        parts.append(f'<div class="docs-group"><div class="docs-group-title">{html.escape(title)}</div>')
-        for rel, label in entries:
-            current = " is-active" if rel == active else ""
-            aria = ' aria-current="page"' if rel == active else ""
-            href = f"/manual/{quote(rel, safe='/')}"
-            parts.append(
-                f'<a class="docs-link{current}" href="{href}"{aria}>{html.escape(label)}</a>'
-            )
-        parts.append("</div>")
-    parts.append("</nav>")
-    return "\n".join(parts)
-
-
-def _render(path: Path) -> HTMLResponse:
-    text = path.read_text(encoding="utf-8", errors="replace")
-    rendered = _links(render_markdown(text), path)
-    page = PAGE.read_text(encoding="utf-8")
-    page = page.replace("__VERSION__", __version__)
-    page = page.replace("__TITLE__", html.escape(_title(path, text)))
-    page = page.replace("__SIDEBAR__", _sidebar(_url_rel(path)))
-    page = page.replace("__CONTENT__", rendered)
-    return HTMLResponse(page)
 
 
 def _payload(path: Path) -> dict[str, str]:
@@ -161,17 +132,6 @@ def _items() -> list[dict[str, str]]:
 
 
 def mount_docs(app: FastAPI) -> None:
-    @app.get("/manual", response_class=HTMLResponse)
-    async def manual_index() -> HTMLResponse:
-        return _render(DOCS_DIR / "guide.md")
-
-    @app.get("/manual/{name:path}", response_class=HTMLResponse)
-    async def manual_doc(name: str) -> HTMLResponse:
-        path = _resolve(name)
-        if path is None:
-            raise HTTPException(status_code=404, detail="文档不存在")
-        return _render(path)
-
     @app.get("/api/docs")
     async def docs_index() -> JSONResponse:
         return JSONResponse({"ok": True, "items": _items(), "default": "guide.md"})

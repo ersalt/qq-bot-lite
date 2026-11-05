@@ -196,8 +196,8 @@ TOOLS = [
 - 前端是 `app/web/static/` 下的原生 JS + 本地 Basecoat，没有 npm/build。
 - 静态资源通过 `/static/<name>`，`routes.py` 自动加 `?v=<mtime>`；不要放子目录。
 - 主面板设置 schema 在 `app/web/schema.py`；保存时 `settings.py` 按 schema 校验、逐行写 TOML。
-- 主面板「文档」页签和独立页 `/manual` 读取仓库里的 Markdown，用 `markdown_render.py`
-  清洗后展示；不请求外部资源。页签数据走 `/api/docs`，本地链接在页签内切换。
+- 主面板「文档」页签读取仓库里的 Markdown，用 `markdown_render.py` 清洗后展示；
+  不请求外部资源。数据走 `/api/docs`，本地链接在页签内切换。
 - 改界面先读 [ui-spec.md](ui-spec.md)；改提示文字先确认文档里有对应说明。
 
 ## 9. 配置写回

@@ -65,7 +65,7 @@ personas/             人设 Markdown
 docs/                 guide.md（用户指南）、settings.md（设置说明）、development.md（开发文档）、
                       api.md（SDK/API）、local-first.md（定位与实测）、plugin.md（插件开发）、
                       log-spec.md（日志格式）、ui-spec.md（界面契约）、bot-space.md（内部设计记录）；
-                      WebUI「文档」页签 / `/manual` 本地阅读
+                      WebUI「文档」页签本地阅读
 ```
 
 ## 不能碰的设计
@@ -147,6 +147,6 @@ D:\Dev\
 - `v0.2.0` 已发布：https://github.com/ersalt/qq-bot-lite/releases/tag/v0.2.0
 - 面板已按 `docs/ui-spec.md` 重排：顶栏 + 页头 + 页内页签 + 白卡行式，动效见规范第 7 节。
 - 文档：guide / settings / development / api 入口，local-first / plugin / log-spec / ui-spec / bot-space
-  作为深入参考；WebUI「文档」页签和 `/manual` 读同一套本地 Markdown，不依赖外部站点。
+  作为深入参考；WebUI「文档」页签读同一套本地 Markdown，不依赖外部站点。
 - 本机运行时：机器人在跑，LM Studio 加载 `qwen3.8-27b`（32768 ctx），SnowLuma 反连 8790。
 - 插件模型：`whale_lexicon` / `bot_space` 直接内置在 `plugins/`，与主仓库同测试、同发版。

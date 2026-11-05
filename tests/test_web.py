@@ -76,6 +76,7 @@ def test_max_bytes_shown_in_kb_and_saved_as_bytes(tmp_path: Path) -> None:
         )
         assert field["scale"] == 1024
         assert field["label"].endswith("（KB）")
+        assert field["hint"] == "1MB = 1024KB"
         # 默认 20,000,000 字节在面板上显示成 19531.25 KB
         assert payload["values"]["images.max_bytes"] == 19531.25
 
@@ -96,7 +97,7 @@ def test_example_config_enables_builtin_plugins() -> None:
     assert cfg.extensions.enabled == ["bot_space", "whale_lexicon"]
 
 
-def test_local_docs_page_and_markdown_links(tmp_path: Path) -> None:
+def test_docs_api_and_no_standalone_page(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     with client:
         page = client.get("/")
@@ -104,41 +105,33 @@ def test_local_docs_page_and_markdown_links(tmp_path: Path) -> None:
         assert 'id="theme"' in page.text
         assert 'id="full"' in page.text
 
-        index = client.get("/manual")
-        assert index.status_code == 200
-        assert "使用指南" in index.text
-        assert "设置说明" in index.text
-        assert "开发文档" in index.text
-        assert 'href="/manual/development.md"' in index.text
-        assert 'href="/manual/settings.md"' in index.text
-        assert 'href="/manual/api.md"' in index.text
-        assert "BOT空间设计交接" not in index.text
-
-        development = client.get("/manual/development.md")
-        assert development.status_code == 200
-        assert "ToolRunner" in development.text
-        assert 'href="/manual/guide.md"' in development.text
-
-        settings = client.get("/manual/settings.md")
-        assert settings.status_code == 200
-        assert "接过的消息条数" in settings.text
-
-        api = client.get("/manual/api.md")
-        assert api.status_code == 200
-        assert "PluginContext" in api.text
+        # 文档只通过主面板页签提供，旧 /manual 页面已移除
+        assert client.get("/manual").status_code == 404
 
         listing = client.get("/api/docs").json()
         assert listing["ok"] is True
         assert any(item["path"] == "settings.md" for item in listing["items"])
+        assert any(item["label"] == "SDK 与 API" for item in listing["items"])
+        assert all("设计交接" not in item["label"] for item in listing["items"])
+
+        development = client.get("/api/docs/development.md").json()
+        assert development["ok"] is True
+        assert "ToolRunner" in development["html"]
+        assert 'href="#documents/guide.md"' in development["html"]
+
+        settings = client.get("/api/docs/settings.md").json()
+        assert settings["ok"] is True
+        assert "接过的消息条数" in settings["html"]
+
         api_doc = client.get("/api/docs/api.md").json()
         assert api_doc["ok"] is True
         assert "PluginContext" in api_doc["html"]
 
-        plugin = client.get("/manual/plugins/whale_lexicon/README.md")
-        assert plugin.status_code == 200
-        assert "鲸语汇" in plugin.text
+        plugin = client.get("/api/docs/plugins/whale_lexicon/README.md").json()
+        assert plugin["ok"] is True
+        assert "鲸语汇" in plugin["html"]
 
-        assert client.get("/manual/nope.md").status_code == 404
+        assert client.get("/api/docs/nope.md").status_code == 404
 
 
 def test_save_writes_toml_and_applies(tmp_path: Path) -> None:

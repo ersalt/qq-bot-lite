@@ -131,8 +131,8 @@ Command(
 | GET | `/healthz` | 健康检查 |
 | GET | `/api/status` | 在线状态、收发计数、首字统计 |
 | POST | `/api/shutdown` | 优雅停机；只接受本机请求 |
-| GET | `/manual` | 本地文档首页 |
-| GET | `/manual/{path}` | 本地 Markdown 文档；只允许 `docs/` 和 `plugins/*.md` |
+| GET | `/api/docs` | 主面板文档页签的目录 |
+| GET | `/api/docs/{path}` | 本地 Markdown；只允许 `docs/` 和 `plugins/*.md` |
 | GET | `/static/{name}` | 静态资源，带 mtime 版本参数 |
 
 ### 3.2 配置
