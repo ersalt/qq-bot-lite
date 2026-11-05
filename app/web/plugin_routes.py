@@ -107,12 +107,32 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
         manifest = registry.manifests.get(plugin_id)
         if manifest is None:
             return JSONResponse({"ok": False, "message": "安装后没有找到插件清单"}, status_code=500)
-        log.info("插件已安装: %s", plugin_id)
+        if manifest.error:
+            log.info("插件已安装但清单无效: %s", plugin_id)
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "plugins": registry.list_plugins(),
+                    "message": f"已安装「{manifest.display}」，但清单无效：{manifest.error}",
+                }
+            )
+
+        # 新装插件默认启用：装完就能用，不用再让用户绕到卡片上找开关。
+        await registry.set_enabled(plugin_id, True)
+        save_enabled(list(registry.enabled))
+        mount_plugin_routers(app, registry)
+        error = registry.errors.get(plugin_id)
+        if error:
+            message = f"已安装「{manifest.display}」并加入启用列表，但加载失败：{error}"
+            log.warning("插件已安装但加载失败: %s: %s", plugin_id, error)
+        else:
+            message = f"已安装并启用「{manifest.display}」"
+            log.info("插件已安装并启用: %s", plugin_id)
         return JSONResponse(
             {
                 "ok": True,
                 "plugins": registry.list_plugins(),
-                "message": f"已安装「{manifest.display}」（未启用），点卡片开关启用",
+                "message": message,
             }
         )
 

@@ -85,7 +85,12 @@ function pluginCard(plugin) {
     link.rel = "noopener";
     if (!plugin.enabled) {
       link.classList.add("disabled");
-      link.addEventListener("click", (event) => event.preventDefault());
+      link.setAttribute("aria-disabled", "true");
+      link.title = "插件未启用，先打开卡片右上角的开关";
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        toast(`「${plugin.title}」还没有启用，先打开卡片右上角的开关`, "bad");
+      });
     }
     actions.append(link);
   }
@@ -240,7 +245,7 @@ async function installPlugin(file, button) {
     }
     PLUGINS.items = data.plugins || [];
     paintPlugins(PLUGINS.items);
-    toast(data.message || "已安装，记得在卡片上启用");
+    toast(data.message || "已安装并启用");
     return true;
   } catch (error) {
     toast(`安装失败：${error.message}`, "bad");
@@ -283,7 +288,7 @@ function openInstallDialog() {
     el(
       "p",
       "hint",
-      "支持 <插件id>/plugin.toml，或 ZIP 根目录直接放 plugin.toml（ZIP 名就是插件 id）。安装后默认不启用，用卡片开关启用。",
+      "支持 <插件id>/plugin.toml，或 ZIP 根目录直接放 plugin.toml（ZIP 名就是插件 id）。安装后默认启用；加载失败会在卡片上显示原因。",
     ),
   );
 

@@ -348,7 +348,7 @@ def test_plugin_zip_install(tmp_path: Path) -> None:
             "packed/README.md": "# 打包说明\n",
         }
     )
-    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    client, path = _client(tmp_path, plugin_dir=plugin_dir)
     with client:
         response = client.post(
             "/api/plugins/install",
@@ -360,7 +360,8 @@ def test_plugin_zip_install(tmp_path: Path) -> None:
         assert data["ok"] is True
         assert (plugin_dir / "packed" / "plugin.toml").exists()
         item = next(p for p in data["plugins"] if p["name"] == "packed")
-        assert item["enabled"] is False
+        assert item["enabled"] is True
+        assert "启用" in data["message"]
 
         readme = client.get("/api/plugins/packed/readme")
         assert readme.status_code == 200
@@ -372,6 +373,8 @@ def test_plugin_zip_install(tmp_path: Path) -> None:
             headers={"Content-Type": "application/zip"},
         )
         assert again.status_code == 409
+
+    assert "packed" in load_config(path).extensions.enabled
 
 
 def test_plugin_zip_root_layout_uses_zip_name(tmp_path: Path) -> None:
@@ -397,7 +400,7 @@ def test_plugin_zip_root_layout_uses_zip_name(tmp_path: Path) -> None:
         assert (plugin_dir / "root_pack" / "plugin.toml").exists()
         assert (plugin_dir / "root_pack" / "pages" / "index.html").exists()
         item = next(p for p in response.json()["plugins"] if p["name"] == "root_pack")
-        assert item["enabled"] is False
+        assert item["enabled"] is True
 
 
 def test_plugin_zip_root_layout_uses_manifest_id(tmp_path: Path) -> None:
