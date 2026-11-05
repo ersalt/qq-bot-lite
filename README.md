@@ -20,7 +20,7 @@ QQ ↔ SnowLuma ↔ qq-bot-lite(8790) ↔ LM Studio(1234)
 - [SDK 与 API](docs/api.md)：插件 SDK、清单、宿主 HTTP 接口
 - [插件规范](docs/plugin.md) / [本地优先取舍](docs/local-first.md) / [界面规范](docs/ui-spec.md) / [日志格式](docs/log-spec.md)
 
-启动后也可以从 WebUI 顶栏「文档」直接阅读；文档全部在仓库里，不依赖外部站点。
+启动后也可以从设置页签栏的「文档」直接阅读；文档全部在仓库里，不依赖外部站点。
 
 ## 快速开始
 

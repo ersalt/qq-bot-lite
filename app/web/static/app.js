@@ -222,6 +222,8 @@ function render() {
       panel.append(pluginsPanel());
     } else if (section.id === "documents") {
       panel.append(docsPanel());
+    } else if (section.id === "about") {
+      panel.append(aboutPanel());
     } else if (section.id === "llm") {
       panel.append(modelPanel(section));
     } else if (section.id === "persona") {
@@ -305,7 +307,7 @@ function showSection(id) {
 
   const actions = $("actions");
   // 人设页保留配置级保存（兜底昵称在配置里），正文另有自己的「保存人设」
-  if (actions) actions.hidden = target === "plugins" || target === "documents";
+  if (actions) actions.hidden = target === "plugins" || target === "documents" || target === "about";
 
   try {
     localStorage.setItem("qqbotlite-section", target);
@@ -551,6 +553,12 @@ async function load() {
         desc: "本地使用、设置、开发文档，不需要外部站点。",
         fields: [],
       },
+      {
+        id: "about",
+        title: "关于",
+        desc: "版本、项目地址与许可。",
+        fields: [],
+      },
     ];
     state.values = { ...payload.values };
     state.original = { ...payload.values };
@@ -665,58 +673,34 @@ async function pollStatus() {
   }
 }
 
-/* ---------- 文档 / 关于 ---------- */
+/* ---------- 关于 ---------- */
 
-function initNavigation() {
-  const docs = $("docs-link");
-  if (docs) {
-    docs.addEventListener("click", (event) => {
-      event.preventDefault();
-      showSection("documents");
-    });
-  }
-  const about = $("about");
-  if (about) about.addEventListener("click", openAboutDialog);
-}
+function aboutPanel() {
+  const wrap = el("div", "stack");
+  const card = el("section", "card");
+  const pad = el("div", "card-pad about-intro");
+  pad.append(el("h2", "about-title", "qq-bot-lite"));
 
-function openAboutDialog() {
-  closeDialog();
-  const panel = document.createElement("dialog");
-  panel.id = "dialog";
-  panel.className = "modal about";
-  panel.addEventListener("click", (event) => {
-    if (event.target === panel) closeDialog();
-  });
-
-  const box = el("div", "dialog-panel");
-  const head = document.createElement("header");
-  const titleRow = el("div", "dialog-title-row");
-  titleRow.append(el("h2", null, "关于"));
-  head.append(titleRow);
-  head.append(el("p", null, "qq-bot-lite · 本地优先的 QQ 机器人"));
-  box.append(head);
-
-  const body = document.createElement("section");
-  body.append(
+  const version = document.querySelector(".brand .ver")?.textContent || "";
+  pad.append(el("p", "about-version", version ? `版本 ${version}` : "本地构建"));
+  pad.append(
     el(
       "p",
       "hint",
-      "配置、会话、插件数据和文档都在本机；不需要公网服务器。",
+      "本地优先的 QQ 机器人。配置、会话、插件数据和文档都在本机，不需要公网服务器。",
     ),
   );
+
   const meta = el("div", "about-meta");
-  const version = document.querySelector(".brand .ver")?.textContent || "";
-  meta.append(el("span", null, version ? `版本 ${version}` : "本地构建"));
+  meta.append(el("span", null, "OneBot 11 反向 WS"));
+  meta.append(el("span", null, "LM Studio / OpenAI 兼容"));
   meta.append(el("span", null, "MIT License"));
-  body.append(meta);
+  pad.append(meta);
 
   const links = el("div", "about-links");
   const docs = uiButton("打开文档", { variant: "outline", size: "sm" });
   docs.type = "button";
-  docs.addEventListener("click", () => {
-    closeDialog();
-    showSection("documents");
-  });
+  docs.addEventListener("click", () => showSection("documents"));
   const repo = document.createElement("a");
   repo.className = "btn";
   repo.dataset.variant = "outline";
@@ -726,21 +710,11 @@ function openAboutDialog() {
   repo.rel = "noopener noreferrer";
   repo.textContent = "GitHub";
   links.append(docs, repo);
-  body.append(links);
-  box.append(body);
+  pad.append(links);
 
-  const foot = document.createElement("footer");
-  const done = uiButton("关闭", { variant: "outline" });
-  done.type = "button";
-  done.addEventListener("click", closeDialog);
-  foot.append(done);
-  box.append(foot);
-
-  panel.append(box);
-  document.body.append(panel);
-  panel.tabIndex = -1;
-  panel.showModal();
-  panel.focus();
+  card.append(pad);
+  wrap.append(card);
+  return wrap;
 }
 
 /* ---------- 事件 ---------- */
@@ -791,7 +765,6 @@ function initEvents() {
 initTheme();
 initTopbar();
 initFullscreen();
-initNavigation();
 initEvents();
 load().then(() => moveInk(false));
 pollStatus();

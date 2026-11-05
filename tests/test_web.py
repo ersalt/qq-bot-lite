@@ -101,9 +101,8 @@ def test_local_docs_page_and_markdown_links(tmp_path: Path) -> None:
     with client:
         page = client.get("/")
         assert page.status_code == 200
-        assert 'id="docs-link"' in page.text
-        assert 'href="#documents"' in page.text
-        assert 'id="about"' in page.text
+        assert 'id="theme"' in page.text
+        assert 'id="full"' in page.text
 
         index = client.get("/manual")
         assert index.status_code == 200

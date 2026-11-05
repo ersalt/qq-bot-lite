@@ -1377,6 +1377,14 @@ details.card .card-pad { padding-top: 4px; }
 }
 .docs-content .md-body { max-width: none; margin: 0; }
 .docs-loading { padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.about-intro { padding: 4px 0 6px; }
+.about-title { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+.about-version {
+  margin: 6px 0 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+}
 .about-meta {
   display: flex;
   flex-wrap: wrap;
