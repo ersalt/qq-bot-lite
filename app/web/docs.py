@@ -19,11 +19,18 @@ PLUGINS_DIR = ROOT / "plugins"
 PAGE = Path(__file__).with_name("docs.html")
 
 DOC_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
-    ("开始", [("guide.md", "使用指南")]),
+    (
+        "开始",
+        [
+            ("guide.md", "使用指南"),
+            ("settings.md", "设置说明"),
+        ],
+    ),
     (
         "开发",
         [
             ("development.md", "开发文档"),
+            ("api.md", "SDK 与 API"),
             ("plugin.md", "插件规范"),
             ("local-first.md", "本地优先取舍"),
             ("ui-spec.md", "界面规范"),
@@ -35,7 +42,6 @@ DOC_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         [
             ("plugins/whale_lexicon/README.md", "鲸语汇"),
             ("plugins/bot_space/README.md", "BOT空间"),
-            ("plugins/bot_space/docs/bot-space.md", "BOT空间设计交接"),
         ],
     ),
 ]

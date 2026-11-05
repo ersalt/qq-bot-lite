@@ -9,12 +9,15 @@ QQ ↔ SnowLuma ↔ qq-bot-lite(8790) ↔ LM Studio(1234)
 - 群聊 + 私聊、人设、上下文裁剪、引用/@/分段、图片识别；
 - 原生工具协议（`tool_calls` / `role=tool`），工具对所有会话开放；
 - 插件系统 `api = 2`，两个内置插件默认启用：鲸语汇、BOT空间；
+- 内置插件是完整副本（含 tests/docs，方便学习）；主要开发在各自插件项目，完成后同步进来；
 - 纯原生前端，无构建链；配置和文档都在本机，不需要公网服务器。
 
 ## 文档
 
 - [使用指南](docs/guide.md)：安装、SnowLuma、LM Studio、WebUI、插件、常见问题
+- [设置说明](docs/settings.md)：每个 WebUI 设置项逐条解释
 - [开发文档](docs/development.md)：架构、工具循环、插件开发、测试、发布
+- [SDK 与 API](docs/api.md)：插件 SDK、清单、宿主 HTTP 接口
 - [插件规范](docs/plugin.md) / [本地优先取舍](docs/local-first.md) / [界面规范](docs/ui-spec.md) / [日志格式](docs/log-spec.md)
 
 启动后也可以从 WebUI 顶栏「文档」直接阅读；文档全部在仓库里，不依赖外部站点。

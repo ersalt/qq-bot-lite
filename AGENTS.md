@@ -79,8 +79,8 @@ docs/                 guide.md（用户指南）、development.md（开发文档
    表单下拉框用 `uiSelect`（`static/ui.js`），不要手写原生 `<select>`。
    **界面规范在 `docs/ui-spec.md`，改界面前先读；令牌只准在 `theme.css` 定义，`style.css` 只引用。**
 4. **插件只从项目内 `plugins/` 加载**，`[extensions] dirs` 留空。`whale_lexicon` 和
-   `bot_space` 已是主仓库内置插件，源码、测试、文档都随主仓库跟踪；新插件也可以直接放
-   `plugins/<id>/`，不要再引入外部部署副本。
+   `bot_space` 在主仓库有完整内置副本（含 tests/docs，随项目分发、方便学习）；主要开发仍在
+   各自插件项目里进行，完成后同步到 `plugins/<id>/`。新插件也可以直接放 `plugins/<id>/`。
 5. 配置写回是**逐行改**，不是整份重写——注释必须保留。
 
 ## 插件模型（细节见 docs/plugin.md）

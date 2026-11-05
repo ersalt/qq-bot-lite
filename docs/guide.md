@@ -1,6 +1,7 @@
 # qq-bot-lite 使用指南
 
-> 这份文档面向**部署和使用机器人的人**。开发、插件契约、内部链路见[开发文档](development.md)。
+> 这份文档面向**部署和使用机器人的人**。每个设置项的解释见[设置说明](settings.md)；
+> 开发、插件契约、内部链路见[开发文档](development.md)。
 >
 > 所有文档都在项目仓库里，不需要外部服务器；启动机器人后也可以从 WebUI 顶栏的「文档」阅读。
 
@@ -206,7 +207,8 @@ bot 的私人 Markdown 手记，全局一份，不分群聊私聊：
 
 数据在 `data/plugin_data/bot_space/space/`。面板在「插件」→ BOT空间 → 打开面板。
 
-完整说明见 [BOT空间 README](../plugins/bot_space/README.md)，设计背景见[插件内的设计文档](../plugins/bot_space/docs/bot-space.md)。
+完整说明见 [BOT空间 README](../plugins/bot_space/README.md)；开发设计记录只看插件源码里的
+`plugins/bot_space/docs/`，不放进普通用户文档。
 
 ### 7.3 插件管理
 

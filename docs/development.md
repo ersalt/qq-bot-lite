@@ -3,8 +3,9 @@
 > 这份文档面向**改代码、写插件、维护发布的人**。部署和使用见[使用指南](guide.md)。
 >
 > 现有深水区文档仍然有效，按需跳转：
-> [插件规范](plugin.md) · [本地优先取舍](local-first.md) · [界面规范](ui-spec.md) ·
-> [日志格式](log-spec.md) · [BOT空间设计](bot-space.md)。
+> [插件规范](plugin.md) · [SDK 与 API](api.md) · [设置说明](settings.md) ·
+> [本地优先取舍](local-first.md) · [界面规范](ui-spec.md) · [日志格式](log-spec.md) ·
+> [BOT空间设计](bot-space.md)（内部设计记录，不是用户手册）。
 
 ## 1. 仓库地图
 
@@ -34,8 +35,9 @@ tests/               主项目测试
 data/                运行期数据（不入库）
 ```
 
-两个内置插件是主仓库的一部分：源码、测试、README、design docs 都在 `plugins/<id>/`，
-不再有外部部署副本。
+两个内置插件在主仓库有**完整内置副本**：源码、测试、README、design docs 都在
+`plugins/<id>/`，随项目分发，也方便其他人直接学习。主要开发仍然在各自的插件项目里进行，
+完成后由插件作者把运行时源码、tests、docs 一起同步到 `plugins/<id>/`。
 
 ## 2. 本地开发
 
@@ -186,7 +188,8 @@ TOOLS = [
 - 测试：`plugins/bot_space/tests/`
 - 数据：`data/plugin_data/bot_space/space/`
 
-两个插件都随主仓库测试和发版；改插件时在主项目根目录跑各自的 pytest，不要另建部署副本。
+两个插件的主仓库副本会跟主项目一起测试；插件功能开发在各自插件项目里做，同步后在主项目根目录
+跑各自的 pytest。不要在 `plugins/` 里再套一层部署副本。
 
 ## 8. WebUI 与文档
 

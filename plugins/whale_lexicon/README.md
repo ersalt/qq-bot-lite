@@ -9,14 +9,14 @@
 
 ## 在主项目里
 
-本插件现在是 qq-bot-lite 的**内置插件**，源码就在主仓库的 `plugins/whale_lexicon/`，
-随主仓库一起跟踪、测试和发布；不再维护独立的部署副本。
+本插件是 qq-bot-lite 的**内置插件**：主仓库 `plugins/whale_lexicon/` 是随项目分发的完整副本，
+含 tests/docs，方便其他人直接学习和一起跑测试。
 
+- 主要开发在插件自己的项目里进行，完成后把运行时源码 + tests + docs 同步到主仓库副本。
 - 启用/停用：主面板「插件」页；默认启用。
-- 开发：直接改 `plugins/whale_lexicon/`，不需要同步脚本。
 - 测试：`python -m pytest plugins/whale_lexicon/tests -q`。
 - 用户文档：本 README；更完整的安装与设置说明见主项目 `docs/guide.md` 的「内置插件」。
-- 开发文档：主项目 `docs/development.md` 的插件章节。
+- 开发文档：主项目 `docs/development.md` 的插件章节，SDK/API 速查见 `docs/api.md`。
 
 ## 结构
 

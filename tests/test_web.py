@@ -106,13 +106,25 @@ def test_local_docs_page_and_markdown_links(tmp_path: Path) -> None:
         index = client.get("/manual")
         assert index.status_code == 200
         assert "使用指南" in index.text
+        assert "设置说明" in index.text
         assert "开发文档" in index.text
         assert 'href="/manual/development.md"' in index.text
+        assert 'href="/manual/settings.md"' in index.text
+        assert 'href="/manual/api.md"' in index.text
+        assert "BOT空间设计交接" not in index.text
 
         development = client.get("/manual/development.md")
         assert development.status_code == 200
         assert "ToolRunner" in development.text
         assert 'href="/manual/guide.md"' in development.text
+
+        settings = client.get("/manual/settings.md")
+        assert settings.status_code == 200
+        assert "接过的消息条数" in settings.text
+
+        api = client.get("/manual/api.md")
+        assert api.status_code == 200
+        assert "PluginContext" in api.text
 
         plugin = client.get("/manual/plugins/whale_lexicon/README.md")
         assert plugin.status_code == 200

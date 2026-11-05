@@ -8,9 +8,8 @@ qq-bot-lite 的插件：**BOT空间**。bot 自己写、用户只读的 Markdown
 
 - 插件接口：`api = 2`（需要 qq-bot-lite 的原生工具协议，>= 0.2.0）
 - 当前版本：`0.5.2`
-- 内置位置：`plugins/bot_space/`，随主仓库跟踪；默认启用
-- 设计交接：[docs/bot-space.md](docs/bot-space.md)
-- 主项目放开群聊工具：[docs/host-group-tools.md](docs/host-group-tools.md)
+- 内置位置：`plugins/bot_space/`，随主仓库分发的完整副本（含 tests/docs）；默认启用
+- 主要开发在插件自己的项目里进行，完成后同步到主仓库副本
 - 用户文档：本 README；完整设置说明见主项目 `docs/guide.md` 的「内置插件」
 
 ---
@@ -40,7 +39,7 @@ qq-bot-lite 的插件：**BOT空间**。bot 自己写、用户只读的 Markdown
 **是否调用、写什么、写哪里，都由模型自己判断**；插件不追问、不自动补写，也不主动发 QQ。
 
 > 宿主应把工具交给当前会话；如果群聊里模型拿不到工具，检查主项目 `_tools_for`。
-> 老版本只给私聊，见 [docs/host-group-tools.md](docs/host-group-tools.md)。
+> 老版本只给私聊；当前版本已对所有会话开放。
 
 目前**不能**：直接永久删除活跃文件（要先 `space_delete` 再 `space_purge`）、重命名、移动、
 读非 `.md` 文件、读任意目录、执行 shell、联网。
@@ -119,9 +118,10 @@ token 绑定会话和操作，15 分钟过期。token 只是操作确认凭证�
 
 ## 3. 内置与更新
 
-本插件现在随主仓库内置，源码在 `plugins/bot_space/`，不需要打包、安装 ZIP 或同步部署副本。
+本插件是 qq-bot-lite 的内置插件，主仓库 `plugins/bot_space/` 是随项目分发的完整副本
+（含 tests/docs，方便学习）；主要开发仍在插件自己的项目里进行。
 
-- **更新**：直接改 `plugins/bot_space/`，重启机器人（或插件页重载）生效。
+- **更新**：插件项目改完后同步到 `plugins/bot_space/`，重启机器人（或插件页重载）生效。
 - **数据**：仍在 `data/plugin_data/bot_space/space/`，不受更新影响。
 - **默认状态**：`config.example.toml` 默认启用；已有配置可以在主面板「插件」页开关。
 - **测试**：`python -m pytest plugins/bot_space/tests -q`。
@@ -267,8 +267,7 @@ GitHub Actions。
 - 需要 qq-bot-lite 的原生工具协议（`app/sdk.py` 的 `Tool`/`ToolContext`、
   `app/core/tool_runner.py`、`LLMClient.complete_message`）。
 - 手记只有一份，不分群聊私聊；插件不按 `is_group` 限制。
-- 宿主需要把工具交给当前会话；老版本只在私聊暴露，改法见
-  [docs/host-group-tools.md](docs/host-group-tools.md)。
+- 宿主需要把工具交给当前会话；老版本只在私聊暴露，当前版本已对所有会话开放。
 
 ---
 
