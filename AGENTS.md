@@ -62,9 +62,10 @@ app/
   config.py           dataclass 配置 + TOML 读写（写回保留注释）
 plugins/              插件（只从这里加载；_template 是骨架）
 personas/             人设 Markdown
-docs/                 guide.md（用户指南）、development.md（开发文档）、local-first.md（定位与实测）、
-                      plugin.md（插件开发）、log-spec.md（日志格式）、ui-spec.md（界面契约）、
-                      bot-space.md（bot 私人空间设计交接）；WebUI「文档」页签 / `/manual` 本地阅读
+docs/                 guide.md（用户指南）、settings.md（设置说明）、development.md（开发文档）、
+                      api.md（SDK/API）、local-first.md（定位与实测）、plugin.md（插件开发）、
+                      log-spec.md（日志格式）、ui-spec.md（界面契约）、bot-space.md（内部设计记录）；
+                      WebUI「文档」页签 / `/manual` 本地阅读
 ```
 
 ## 不能碰的设计
