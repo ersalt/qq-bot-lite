@@ -1329,6 +1329,13 @@ details.card .card-pad { padding-top: 4px; }
   gap: 26px;
   align-items: start;
 }
+.docs-embedded {
+  max-width: none;
+  padding: 0;
+  gap: 20px;
+}
+.docs-embedded .docs-side { top: 18px; }
+.docs-embedded .docs-content.md-body { padding: 24px 28px; }
 .docs-side { position: sticky; top: 76px; }
 .docs-nav { display: flex; flex-direction: column; gap: 18px; }
 .docs-group { display: flex; flex-direction: column; gap: 3px; }
@@ -1341,12 +1348,18 @@ details.card .card-pad { padding-top: 4px; }
 }
 .docs-link {
   display: block;
+  width: 100%;
   padding: 6px 10px;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   color: var(--muted);
+  font: inherit;
   font-size: 12.5px;
   line-height: 1.45;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
   transition: background-color var(--dur-1) var(--ease-out-quart),
               color var(--dur-1) var(--ease-out-quart);
 }
@@ -1363,6 +1376,16 @@ details.card .card-pad { padding-top: 4px; }
   min-width: 0;
 }
 .docs-content .md-body { max-width: none; margin: 0; }
+.docs-loading { padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.about-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.about-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 @media (max-width: 900px) {
   .docs-page { grid-template-columns: minmax(0, 1fr); padding: 18px 16px 60px; }
   .docs-side { position: static; }

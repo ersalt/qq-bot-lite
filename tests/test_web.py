@@ -101,7 +101,9 @@ def test_local_docs_page_and_markdown_links(tmp_path: Path) -> None:
     with client:
         page = client.get("/")
         assert page.status_code == 200
-        assert 'href="/manual"' in page.text
+        assert 'id="docs-link"' in page.text
+        assert 'href="#documents"' in page.text
+        assert 'id="about"' in page.text
 
         index = client.get("/manual")
         assert index.status_code == 200
@@ -125,6 +127,13 @@ def test_local_docs_page_and_markdown_links(tmp_path: Path) -> None:
         api = client.get("/manual/api.md")
         assert api.status_code == 200
         assert "PluginContext" in api.text
+
+        listing = client.get("/api/docs").json()
+        assert listing["ok"] is True
+        assert any(item["path"] == "settings.md" for item in listing["items"])
+        api_doc = client.get("/api/docs/api.md").json()
+        assert api_doc["ok"] is True
+        assert "PluginContext" in api_doc["html"]
 
         plugin = client.get("/manual/plugins/whale_lexicon/README.md")
         assert plugin.status_code == 200

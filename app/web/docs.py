@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from .. import __version__
 from .markdown_render import render_markdown
@@ -139,6 +139,27 @@ def _render(path: Path) -> HTMLResponse:
     return HTMLResponse(page)
 
 
+def _payload(path: Path) -> dict[str, str]:
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return {
+        "path": _url_rel(path),
+        "title": _title(path, text),
+        "html": _links(render_markdown(text), path),
+    }
+
+
+def _items() -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for group, entries in DOC_GROUPS:
+        for rel, label in entries:
+            path = _resolve(rel)
+            if path is not None:
+                items.append(
+                    {"group": group, "path": rel, "label": label, "title": _payload(path)["title"]}
+                )
+    return items
+
+
 def mount_docs(app: FastAPI) -> None:
     @app.get("/manual", response_class=HTMLResponse)
     async def manual_index() -> HTMLResponse:
@@ -150,3 +171,14 @@ def mount_docs(app: FastAPI) -> None:
         if path is None:
             raise HTTPException(status_code=404, detail="文档不存在")
         return _render(path)
+
+    @app.get("/api/docs")
+    async def docs_index() -> JSONResponse:
+        return JSONResponse({"ok": True, "items": _items(), "default": "guide.md"})
+
+    @app.get("/api/docs/{name:path}")
+    async def docs_content(name: str) -> JSONResponse:
+        path = _resolve(name)
+        if path is None:
+            return JSONResponse({"ok": False, "message": "文档不存在"}, status_code=404)
+        return JSONResponse({"ok": True, **_payload(path)})

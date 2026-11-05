@@ -847,7 +847,7 @@ function buildDialogField(field, value, host) {
   const label = document.createElement("label");
   label.textContent = field.label || field.key;
   label.htmlFor = `p-${field.key}`;
-  head.append(label, el("span", "key", field.key));
+  head.append(label);
   wrap.append(head);
 
   let read;
