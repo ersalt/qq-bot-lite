@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -59,6 +61,77 @@ def test_page_and_schema(tmp_path: Path) -> None:
         assert "llm" in ids and "images" in ids and "reply" in ids
         assert payload["values"]["llm.model"] == "old-model"
         assert payload["values"]["context.max_messages"] == 100
+
+
+def test_max_bytes_shown_in_kb_and_saved_as_bytes(tmp_path: Path) -> None:
+    client, path = _client(tmp_path)
+    with client:
+        payload = client.get("/api/config").json()
+        field = next(
+            item
+            for section in payload["sections"]
+            if section["id"] == "images"
+            for item in section["fields"]
+            if item["key"] == "images.max_bytes"
+        )
+        assert field["scale"] == 1024
+        assert field["label"].endswith("（KB）")
+        assert field["hint"] == "1MB = 1024KB"
+        # 默认 20,000,000 字节在面板上显示成 19531.25 KB
+        assert payload["values"]["images.max_bytes"] == 19531.25
+
+        response = client.post(
+            "/api/config",
+            json={"updates": {"images.max_bytes": 8192}},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["values"]["images.max_bytes"] == 8192
+
+    text = path.read_text(encoding="utf-8")
+    assert "max_bytes = 8388608" in text
+
+
+def test_example_config_enables_builtin_plugins() -> None:
+    example = Path(__file__).resolve().parents[1] / "config" / "config.example.toml"
+    cfg = load_config(example)
+    assert cfg.extensions.enabled == ["bot_space", "whale_lexicon"]
+
+
+def test_docs_api_and_no_standalone_page(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path)
+    with client:
+        page = client.get("/")
+        assert page.status_code == 200
+        assert 'id="theme"' in page.text
+        assert 'id="full"' in page.text
+
+        # 文档只通过主面板页签提供，旧 /manual 页面已移除
+        assert client.get("/manual").status_code == 404
+
+        listing = client.get("/api/docs").json()
+        assert listing["ok"] is True
+        assert any(item["path"] == "settings.md" for item in listing["items"])
+        assert any(item["label"] == "SDK 与 API" for item in listing["items"])
+        assert all("设计交接" not in item["label"] for item in listing["items"])
+
+        development = client.get("/api/docs/development.md").json()
+        assert development["ok"] is True
+        assert "ToolRunner" in development["html"]
+        assert 'href="#documents/guide.md"' in development["html"]
+
+        settings = client.get("/api/docs/settings.md").json()
+        assert settings["ok"] is True
+        assert "接过的消息条数" in settings["html"]
+
+        api_doc = client.get("/api/docs/api.md").json()
+        assert api_doc["ok"] is True
+        assert "PluginContext" in api_doc["html"]
+
+        plugin = client.get("/api/docs/plugins/whale_lexicon/README.md").json()
+        assert plugin["ok"] is True
+        assert "鲸语汇" in plugin["html"]
+
+        assert client.get("/api/docs/nope.md").status_code == 404
 
 
 def test_save_writes_toml_and_applies(tmp_path: Path) -> None:
@@ -191,9 +264,433 @@ def test_plugins_listed_with_manifest(tmp_path: Path) -> None:
         demo = next(item for item in payload["plugins"] if item["name"] == "demo")
         assert demo["title"] == "演示插件"
         assert demo["panel"] == "/plugins/demo"
+        assert demo["repository"] == "https://github.com/ersalt/qq-bot-lite"
         assert demo["error"] is None
         # 测试用的配置里没有启用任何插件
         assert demo["enabled"] is False
+
+
+def test_plugin_hot_reload_and_stop(tmp_path: Path) -> None:
+    root = tmp_path / "plugins" / "hot"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text('title = "热重载"\n', encoding="utf-8")
+    (root / "plugin.py").write_text(
+        "from pathlib import Path\n"
+        "from app.pluginkit.registry import Extension\n"
+        "HERE = Path(__file__).parent\n"
+        "(HERE / 'loads.txt').open('a', encoding='utf-8').write('x')\n"
+        "class Hot(Extension):\n"
+        "    name = 'hot'\n"
+        "    def on_stop(self):\n"
+        "        (HERE / 'stopped.txt').write_text('stopped', encoding='utf-8')\n"
+        "def setup(ctx):\n"
+        "    return Hot()\n",
+        encoding="utf-8",
+    )
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        enabled = client.post("/api/plugins/hot/enabled", json={"enabled": True})
+        assert enabled.status_code == 200, enabled.text
+        loads = root / "loads.txt"
+        assert loads.read_text(encoding="utf-8") == "x"
+
+        # 重载必须重新执行模块（含子模块缓存要清掉），并先跑 on_stop
+        reloaded = client.post("/api/plugins/hot/reload")
+        assert reloaded.status_code == 200, reloaded.text
+        data = reloaded.json()
+        assert data["ok"] is True, data
+        assert loads.read_text(encoding="utf-8") == "xx"
+        assert (root / "stopped.txt").exists()
+        item = next(p for p in data["plugins"] if p["name"] == "hot")
+        assert item["enabled"] is True
+
+        # 停用也要走 on_stop，而不是把扩展悄悄丢掉
+        (root / "stopped.txt").unlink()
+        off = client.post("/api/plugins/hot/enabled", json={"enabled": False})
+        assert off.status_code == 200, off.text
+        assert (root / "stopped.txt").exists()
+
+
+def _make_plugin(root: Path, name: str) -> Path:
+    folder = root / name
+    folder.mkdir(parents=True)
+    (folder / "plugin.toml").write_text(f'title = "{name}"\n', encoding="utf-8")
+    (folder / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+    return folder
+
+
+def test_plugin_list_has_stable_name_order_and_install_time(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _make_plugin(plugin_dir, "zeta")
+    _make_plugin(plugin_dir, "alpha")
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        items = client.get("/api/plugins").json()["plugins"]
+        assert [item["name"] for item in items] == ["alpha", "zeta"]
+        assert all(item["installed_at"] > 0 for item in items)
+
+
+def test_plugin_delete_keeps_data_by_default(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    folder = _make_plugin(plugin_dir, "del")
+    data_dir = tmp_path / "plugin_data" / "del"
+    data_dir.mkdir(parents=True)
+    (data_dir / "settings.toml").write_text("x = 1\n", encoding="utf-8")
+
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.delete("/api/plugins/del")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["ok"] is True
+        assert not folder.exists()
+        assert (data_dir / "settings.toml").exists()
+        assert all(item["name"] != "del" for item in payload["plugins"])
+        assert payload["data_removed"] is False
+
+
+def test_plugin_delete_with_data_and_enabled_cleanup(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    _make_plugin(plugin_dir, "del")
+    data_dir = tmp_path / "plugin_data" / "del"
+    data_dir.mkdir(parents=True)
+    (data_dir / "settings.toml").write_text("x = 1\n", encoding="utf-8")
+
+    client, config_path = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        enabled = client.post("/api/plugins/del/enabled", json={"enabled": True})
+        assert enabled.status_code == 200, enabled.text
+        assert 'enabled = ["del"]' in config_path.read_text(encoding="utf-8")
+
+        response = client.delete("/api/plugins/del?data=1")
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["data_removed"] is True
+        assert not data_dir.exists()
+        assert "enabled = []" in config_path.read_text(encoding="utf-8")
+
+        unknown = client.delete("/api/plugins/nope")
+        assert unknown.status_code == 404
+
+
+def _zip_bytes(files: dict[str, str | bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    return buffer.getvalue()
+
+
+def test_plugin_zip_install(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "packed/plugin.toml": 'title = "打包插件"\n',
+            "packed/plugin.py": "def setup(ctx):\n    return None\n",
+            "packed/README.md": "# 打包说明\n",
+        }
+    )
+    client, path = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["ok"] is True
+        assert (plugin_dir / "packed" / "plugin.toml").exists()
+        item = next(p for p in data["plugins"] if p["name"] == "packed")
+        assert item["enabled"] is True
+        assert "启用" in data["message"]
+
+        readme = client.get("/api/plugins/packed/readme")
+        assert readme.status_code == 200
+        assert "打包说明" in readme.json()["text"]
+
+        again = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert again.status_code == 409
+
+    assert "packed" in load_config(path).extensions.enabled
+
+
+def test_plugin_zip_root_layout_uses_zip_name(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "plugin.toml": 'title = "根布局"\n',
+            "plugin.py": "def setup(ctx):\n    return None\n",
+            "pages/index.html": "<!doctype html><h1>root</h1>",
+            "README.md": "# 根目录说明\n",
+            "__MACOSX/._plugin": "junk",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install?name=root-pack.zip",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 200, response.text
+        assert (plugin_dir / "root_pack" / "plugin.toml").exists()
+        assert (plugin_dir / "root_pack" / "pages" / "index.html").exists()
+        item = next(p for p in response.json()["plugins"] if p["name"] == "root_pack")
+        assert item["enabled"] is True
+
+
+def test_plugin_zip_root_layout_uses_manifest_id(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "plugin.toml": 'id = "manifest_pack"\ntitle = "清单 id"\n',
+            "plugin.py": "def setup(ctx):\n    return None\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        # 没有文件名提示也能装：id 以 plugin.toml 为准
+        response = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 200, response.text
+        assert (plugin_dir / "manifest_pack" / "plugin.toml").exists()
+
+
+def test_plugin_zip_id_must_match_directory(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "wrong/plugin.toml": 'id = "other"\ntitle = "错位"\n',
+            "wrong/plugin.py": "def setup(ctx):\n    return None\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 400
+        assert "id 与目录名不一致" in response.json()["message"]
+        assert not (plugin_dir / "wrong").exists()
+
+
+def test_plugin_zip_root_layout_requires_name(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "plugin.toml": 'title = "没有名字"\n',
+            "plugin.py": "def setup(ctx):\n    return None\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 400
+        assert "ZIP 命名" in response.json()["message"]
+
+
+def test_plugin_zip_rejects_ambiguous_layout(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    payload = _zip_bytes(
+        {
+            "plugin.toml": 'title = "根"\n',
+            "inner/plugin.toml": 'title = "里"\n',
+            "inner/plugin.py": "def setup(ctx):\n    return None\n",
+        }
+    )
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        response = client.post(
+            "/api/plugins/install?name=ambiguous.zip",
+            content=payload,
+            headers={"Content-Type": "application/zip"},
+        )
+        assert response.status_code == 400
+        assert "结构不明确" in response.json()["message"]
+
+
+def test_plugin_zip_rejects_unsafe_paths_and_links(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    base = {"packed/plugin.toml": 'title = "坏包"\n', "packed/plugin.py": "def setup(ctx):\n    return None\n"}
+
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        slip = client.post(
+            "/api/plugins/install",
+            content=_zip_bytes({**base, "../evil.txt": "x"}),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert slip.status_code == 400
+        assert not (tmp_path / "evil.txt").exists()
+
+        absolute = client.post(
+            "/api/plugins/install",
+            content=_zip_bytes({**base, "/abs.txt": "x"}),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert absolute.status_code == 400
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            for name, content in base.items():
+                archive.writestr(name, content)
+            link = zipfile.ZipInfo("packed/link")
+            link.create_system = 3
+            link.external_attr = 0o120777 << 16
+            archive.writestr(link, "/etc/passwd")
+        symlink = client.post(
+            "/api/plugins/install",
+            content=buffer.getvalue(),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert symlink.status_code == 400
+
+        two_roots = client.post(
+            "/api/plugins/install",
+            content=_zip_bytes(
+                {
+                    "a/plugin.toml": 'title = "A"\n',
+                    "a/plugin.py": "def setup(ctx):\n    return None\n",
+                    "b/plugin.toml": 'title = "B"\n',
+                    "b/plugin.py": "def setup(ctx):\n    return None\n",
+                }
+            ),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert two_roots.status_code == 400
+
+        missing = client.post(
+            "/api/plugins/install",
+            content=_zip_bytes({"packed/plugin.py": "def setup(ctx):\n    return None\n"}),
+            headers={"Content-Type": "application/zip"},
+        )
+        assert missing.status_code == 400
+
+
+def test_plugin_app_version_warning(tmp_path: Path) -> None:
+    plugin_dir = tmp_path / "plugins"
+    plugin_dir.mkdir()
+    for name, app_version in (
+        ("oldver", ">=999"),
+        ("okver", ">=0.0"),
+        ("barever", "0.0"),
+        ("badver", "banana"),
+    ):
+        folder = plugin_dir / name
+        folder.mkdir()
+        (folder / "plugin.toml").write_text(
+            f'title = "{name}"\napp_version = "{app_version}"\n', encoding="utf-8"
+        )
+        (folder / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+
+    client, _ = _client(tmp_path, plugin_dir=plugin_dir)
+    with client:
+        items = {item["name"]: item for item in client.get("/api/plugins").json()["plugins"]}
+    assert items["oldver"]["error"] is None
+    assert "要求 qq-bot-lite >=999" in items["oldver"]["warning"]
+    assert items["okver"]["warning"] == ""
+    assert items["barever"]["warning"] == ""
+    assert "写法不合法" in items["badver"]["warning"]
+
+
+def test_plugin_reload_unknown(tmp_path: Path) -> None:
+    (tmp_path / "plugins").mkdir()
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        response = client.post("/api/plugins/nope/reload")
+        assert response.status_code == 404
+
+
+def test_plugin_readme_and_missing(tmp_path: Path) -> None:
+    client, _ = _client(tmp_path, plugin_dir=FIXTURE_PLUGINS)
+    with client:
+        page = client.get("/api/plugins/demo/readme")
+        assert page.status_code == 200, page.text
+        data = page.json()
+        assert data["ok"] is True
+        assert "测试用的" in data["text"]
+        assert data["filename"].lower() == "readme.md"
+        assert data["truncated"] is False
+        # Markdown 必须渲染，而不是把原文塞进 <pre>
+        assert "<h1>" in data["html"]
+        assert "<strong>README</strong>" in data["html"]
+        assert "<table>" in data["html"]
+        assert 'class="language-python"' in data["html"]
+
+    # 没有 README 的插件：404 + 人话，不是 500
+    root = tmp_path / "plugins" / "noreadme"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text('title = "没有文档"\n', encoding="utf-8")
+    (root / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        missing = client.get("/api/plugins/noreadme/readme")
+        assert missing.status_code == 404
+        assert "README" in missing.json()["message"]
+        unknown = client.get("/api/plugins/nope/readme")
+        assert unknown.status_code == 404
+
+
+def test_plugin_readme_sanitizes_html(tmp_path: Path) -> None:
+    root = tmp_path / "plugins" / "unsafe"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text('title = "不安全"\n', encoding="utf-8")
+    (root / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+    (root / "README.md").write_text(
+        "# 标题\n\n"
+        "<script>alert(1)</script>\n"
+        "<img src=x onerror=alert(2)>\n"
+        "[坏链接](javascript:alert(3))\n",
+        encoding="utf-8",
+    )
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        html = client.get("/api/plugins/unsafe/readme").json()["html"].lower()
+    assert "<script" not in html
+    assert "<img" not in html
+    assert "onerror" not in html
+    assert "javascript:" not in html
+    assert "<h1>标题</h1>" in html
+
+
+def test_plugin_readme_truncates_large_file(tmp_path: Path) -> None:
+    from app.web.plugin_routes import README_LIMIT
+
+    root = tmp_path / "plugins" / "huge"
+    root.mkdir(parents=True)
+    (root / "plugin.toml").write_text('title = "大文档"\n', encoding="utf-8")
+    (root / "plugin.py").write_text("def setup(ctx):\n    return None\n", encoding="utf-8")
+    (root / "README.md").write_text("A" * (README_LIMIT + 10), encoding="utf-8")
+
+    client, _ = _client(tmp_path, plugin_dir=tmp_path / "plugins")
+    with client:
+        data = client.get("/api/plugins/huge/readme").json()
+        assert data["ok"] is True
+        assert data["truncated"] is True
+        assert len(data["text"]) == README_LIMIT
 
 
 def test_plugin_settings_roundtrip(tmp_path: Path) -> None:

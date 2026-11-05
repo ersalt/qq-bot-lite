@@ -1,0 +1,1414 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f9fcfe">
+<link rel="icon" href="data:,">
+<title>鲸鱼空间</title>
+<script>
+  // 主题跟主面板共用一份选择，免得一个亮一个暗
+  (function () {
+    try {
+      var saved = localStorage.getItem("qqbotlite-theme");
+      var query = new URLSearchParams(location.search).get("theme");
+      var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var theme = query === "dark" || query === "light" ? query : saved || (prefersDark ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+      document.documentElement.classList.toggle("dark", theme === "dark");
+      document.documentElement.style.colorScheme = theme;
+      var meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0f1a" : "#f9fcfe");
+    } catch (error) {}
+  })();
+</script>
+<!-- 组件库与令牌：全部来自主程序本地静态资源，无外部请求 -->
+<link rel="stylesheet" href="/static/basecoat.css">
+<link rel="stylesheet" href="/static/theme.css">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+/* 顶栏、页头、卡片、弹窗、空态骨架来自 /static/style.css；
+   这里只写这个面板自己的布局。颜色/圆角/阴影只引用 theme.css 的令牌。 */
+
+.page { padding-bottom: 56px; }
+
+/* ---------- 用量卡 ---------- */
+
+.usage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 16px 22px;
+}
+.usage-main {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.usage-stat { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.usage-label { font-size: 11.5px; color: var(--muted); }
+.usage-value {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.usage-value.small { font-size: 13px; font-weight: 500; padding-top: 6px; }
+.usage-note { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+
+.usage-bars { display: grid; gap: 9px; min-width: 0; }
+.bar-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.bar { height: 6px; border-radius: 6px; background: var(--border); overflow: hidden; }
+.bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 6px;
+  background: var(--primary);
+  transition: width var(--dur-3) var(--ease-out-quart);
+}
+.bar > i.warn { background: var(--warning-ink); }
+.bar > i.danger { background: var(--danger); }
+.bar-pct { text-align: right; font-family: var(--font-mono); }
+
+/* ---------- 主体两栏 ---------- */
+
+.space-layout {
+  display: grid;
+  grid-template-columns: minmax(250px, 330px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.files-card { display: flex; flex-direction: column; min-height: 320px; }
+.files-card .card-head { border-bottom: 1px solid var(--hairline); }
+.filter-row { padding: 10px 16px 8px; }
+.filter-row .input { height: 36px; font-size: 12.5px; }
+.tree {
+  overflow: auto;
+  max-height: calc(100vh - 330px);
+  padding: 2px 10px 14px;
+}
+.tree-group + .tree-group { margin-top: 4px; }
+.tree-dir {
+  padding: 10px 10px 3px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: .03em;
+}
+.tree-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-2) var(--ease-out-quart);
+}
+.tree-item:hover { background: var(--primary-soft); }
+.tree-item[aria-current="true"] { background: var(--primary-soft); color: var(--primary-ink); }
+.tree-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+}
+.tree-meta {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+/* ---------- 阅读区 ---------- */
+
+.view-card { display: flex; flex-direction: column; min-height: 540px; }
+.view-head { align-items: flex-start; gap: 16px; border-bottom: 1px solid var(--hairline); }
+.view-title { min-width: 0; }
+.view-title h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-path {
+  margin: 4px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.seg {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in oklab, var(--canvas) 70%, var(--card));
+}
+.seg-btn {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.seg-btn[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-control);
+}
+.view-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  min-height: 34px;
+  padding: 9px 22px;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.view-body {
+  flex: 1;
+  overflow: auto;
+  max-height: calc(100vh - 342px);
+  padding: 18px 22px 26px;
+}
+
+/* ---------- Markdown ---------- */
+
+.markdown { font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
+.markdown > :first-child { margin-top: 0; }
+.markdown h1, .markdown h2, .markdown h3,
+.markdown h4, .markdown h5, .markdown h6 {
+  margin: 1.35em 0 .55em;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.markdown h1 { font-size: 22px; }
+.markdown h2 { font-size: 18px; }
+.markdown h3 { font-size: 16px; }
+.markdown h4, .markdown h5, .markdown h6 { font-size: 14px; }
+.markdown p { margin: 0 0 .95em; }
+.markdown ul, .markdown ol { margin: 0 0 1em; padding-left: 1.4em; }
+.markdown li { margin: .22em 0; }
+.markdown blockquote {
+  margin: 1em 0;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+.markdown code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-family: var(--font-mono);
+  font-size: .88em;
+}
+.markdown pre {
+  margin: 1em 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--canvas) 65%, var(--card));
+  overflow: auto;
+}
+.markdown pre code {
+  padding: 0;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.markdown hr { margin: 1.6em 0; border: 0; border-top: 1px solid var(--border); }
+.markdown a { color: var(--primary-ink); text-underline-offset: 2px; }
+.markdown .table-wrap { margin: 1em 0; overflow-x: auto; }
+.markdown table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.markdown th, .markdown td { padding: 7px 10px; border: 1px solid var(--border); text-align: left; vertical-align: top; }
+.markdown th { background: color-mix(in oklab, var(--canvas) 60%, var(--card)); font-weight: 600; }
+
+.raw-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text);
+}
+
+/* ---------- 空态 ---------- */
+
+.blank-title { display: block; color: var(--text); font-size: 13px; font-weight: 600; }
+.blank-sub { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
+
+/* ---------- 顶栏补充 ---------- */
+
+.tb-count { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+
+/* ---------- 设置弹窗 ---------- */
+
+.settings-modal { width: min(680px, calc(100vw - 32px)); }
+.settings-modal .dialog-panel > section { padding: 4px 20px 12px; overflow-y: auto; }
+.settings-modal .dialog-grid { align-items: start; }
+.settings-modal .field-wide { grid-column: 1 / -1; }
+.settings-modal .field-head { margin-bottom: 6px; }
+#settings-hint {
+  margin-right: auto;
+  max-width: 60%;
+  font-size: 12px;
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+#settings-hint:empty { display: none; }
+
+/* ---------- 审计弹窗 ---------- */
+
+.audit-modal { width: min(760px, 100%); }
+.audit-modal .dialog-panel > section { padding: 4px 20px 12px; overflow-x: auto; }
+.audit-head, .audit-row {
+  display: grid;
+  grid-template-columns: 118px 96px minmax(0, 1fr) 52px 50px;
+  gap: 10px;
+  align-items: center;
+  min-width: 520px;
+}
+.audit-head {
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.audit-row { padding: 9px 2px; border-bottom: 1px solid var(--hairline); font-size: 12px; }
+.audit-time { font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); }
+.audit-tool { font-family: var(--font-mono); font-size: 11px; }
+.audit-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.audit-chars { font-family: var(--font-mono); font-size: 11px; text-align: right; }
+.audit-ok { color: var(--success-ink); }
+.audit-bad { color: var(--danger); }
+.audit-modal .dialog-panel > footer .dirty-label { margin-right: auto; }
+
+/* ---------- 回收站弹窗 ---------- */
+
+.trash-modal { width: min(820px, 100%); }
+.trash-modal .dialog-panel > section { padding: 4px 20px 12px; overflow-x: auto; }
+.trash-head, .trash-row {
+  display: grid;
+  grid-template-columns: 178px minmax(0, 1fr) 72px 118px;
+  gap: 10px;
+  align-items: center;
+  min-width: 560px;
+}
+.trash-head {
+  padding: 0 2px 8px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.trash-row { padding: 9px 2px; border-bottom: 1px solid var(--hairline); font-size: 12px; }
+.trash-id,
+.trash-path,
+.trash-size,
+.trash-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.trash-id { color: var(--muted); }
+.trash-size { text-align: right; }
+.trash-time { color: var(--muted); }
+.trash-modal .dialog-panel > footer .dirty-label { margin-right: auto; }
+
+/* ---------- 窄屏 ---------- */
+
+@media (min-width: 921px) {
+  .files-card { position: sticky; top: 72px; }
+}
+@media (max-width: 920px) {
+  .usage { grid-template-columns: 1fr; }
+  .space-layout { grid-template-columns: 1fr; }
+  .tree { max-height: 300px; }
+  .view-body { max-height: none; }
+  .view-card { min-height: 380px; }
+}
+@media (max-width: 620px) {
+  .usage-main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tb-count { display: none; }
+  .head { flex-direction: column; gap: 12px; }
+  .head-actions { padding-top: 0; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">鲸鱼空间 <span class="ver" id="brand-version">v0.5.4</span></div>
+  <span class="tb-sep"></span>
+  <span class="tb-scope">手记</span>
+  <div class="tb-right">
+    <span class="tb-count" id="stat-line"></span>
+    <span class="conn" id="status">
+      <i class="dot"></i>
+      <span id="status-text">读取中</span>
+    </span>
+    <div class="tb-tools">
+      <button class="tb-btn" id="settings-btn" type="button" aria-label="设置" title="设置">⚙</button>
+      <button class="tb-btn" id="audit-btn" type="button" aria-label="工具审计" title="工具审计">≡</button>
+      <button class="tb-btn" id="theme-btn" type="button" aria-label="切换主题" title="切换主题">◐</button>
+      <button class="tb-btn" id="full-btn" type="button" aria-label="全屏" title="全屏">⛶</button>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+  <div class="head">
+    <div class="head-text">
+      <h1>鲸鱼空间</h1>
+      <p class="sub">模型自己决定写不写；这里只能看，不提供编辑和删除。要清空，到插件卡片删除插件数据。</p>
+    </div>
+    <div class="head-actions">
+      <button class="btn" data-variant="outline" id="trash-btn" type="button">回收站</button>
+      <button class="btn" data-variant="outline" id="refresh" type="button">刷新</button>
+    </div>
+  </div>
+
+  <div class="notice" role="note">
+    <span class="notice-mark">i</span>
+    <span>只读面板：没有编辑、新建、删除按钮。文件由模型在会话里通过 <code>space_*</code> 工具读写；删除只是移入回收站，模型可以用 <code>space_restore</code> 反悔。群聊和私聊共用同一份手记。</span>
+  </div>
+
+  <section class="card usage" aria-label="手记用量">
+    <div class="usage-main">
+      <div class="usage-stat">
+        <span class="usage-label">文件</span>
+        <span class="usage-value" id="stat-files">-</span>
+        <span class="usage-note" id="stat-files-note">上限 -</span>
+      </div>
+      <div class="usage-stat">
+        <span class="usage-label">占用</span>
+        <span class="usage-value" id="stat-bytes">-</span>
+        <span class="usage-note" id="stat-bytes-note">上限 -</span>
+      </div>
+      <div class="usage-stat">
+        <span class="usage-label">最近更新</span>
+        <span class="usage-value small" id="stat-updated">-</span>
+        <span class="usage-note" id="mode-note">-</span>
+      </div>
+    </div>
+    <div class="usage-bars">
+      <div class="bar-row">
+        <span>文件数</span>
+        <div class="bar"><i id="bar-files"></i></div>
+        <span class="bar-pct" id="pct-files">0%</span>
+      </div>
+      <div class="bar-row">
+        <span>总量</span>
+        <div class="bar"><i id="bar-bytes"></i></div>
+        <span class="bar-pct" id="pct-bytes">0%</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="space-layout">
+    <section class="card files-card" aria-labelledby="files-title">
+      <div class="card-head">
+        <h2 id="files-title">文件</h2>
+        <span class="aside" id="files-meta">读取中…</span>
+      </div>
+      <div class="filter-row">
+        <input class="input" id="filter" type="search" placeholder="过滤路径或标题" autocomplete="off" aria-label="过滤文件">
+      </div>
+      <div class="tree" id="tree">
+        <div class="blank-card">读取中…</div>
+      </div>
+    </section>
+
+    <section class="card view-card" aria-labelledby="file-title">
+      <div class="card-head view-head">
+        <div class="view-title">
+          <h2 id="file-title">选择一篇</h2>
+          <p class="file-path" id="file-path"></p>
+        </div>
+        <div class="seg" role="group" aria-label="查看方式">
+          <button class="seg-btn" id="raw-btn" type="button" aria-pressed="false">原文</button>
+          <button class="seg-btn" id="md-btn" type="button" aria-pressed="true">预览</button>
+        </div>
+      </div>
+      <div class="view-meta" id="file-meta"></div>
+      <div class="view-body" id="content">
+        <div class="blank-card">从左边选一篇</div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <span>根目录 <code>data/plugin_data/bot_space/space</code></span>
+    <span>只读 · <span id="foot-version">v0.5.4</span></span>
+  </footer>
+</main>
+
+<dialog class="modal audit-modal" id="audit-mask">
+  <div class="dialog-panel">
+    <header>
+      <h2>最近工具调用</h2>
+      <p>只记录工具名、路径、字数、成败和时间，不记正文。</p>
+    </header>
+    <section>
+      <div id="audit-list">
+        <div class="blank-card">读取中…</div>
+      </div>
+    </section>
+    <footer>
+      <span class="dirty-label" id="audit-hint"></span>
+      <button class="btn" data-variant="outline" type="button" id="audit-refresh">刷新</button>
+      <button class="btn" type="button" data-close>关闭</button>
+    </footer>
+  </div>
+</dialog>
+
+<dialog class="modal trash-modal" id="trash-mask">
+  <div class="dialog-panel">
+    <header>
+      <h2>回收站</h2>
+      <p>删除的文件在这里；模型可以用 space_trash 查看、space_restore 恢复，或用 space_purge 永久删除。面板只读。</p>
+    </header>
+    <section>
+      <div id="trash-list">
+        <div class="blank-card">读取中…</div>
+      </div>
+    </section>
+    <footer>
+      <span class="dirty-label" id="trash-hint"></span>
+      <button class="btn" data-variant="outline" type="button" id="trash-refresh">刷新</button>
+      <button class="btn" type="button" data-close>关闭</button>
+    </footer>
+  </div>
+</dialog>
+
+<dialog class="modal settings-modal" id="settings-mask">
+  <div class="dialog-panel">
+    <header>
+      <h2>设置</h2>
+      <p>存到 data/plugin_data/bot_space/settings.toml，改完下一轮生效。</p>
+    </header>
+    <section id="settings-body"></section>
+    <footer>
+      <span id="settings-hint"></span>
+      <button class="btn" data-variant="outline" type="button" data-close>取消</button>
+      <button class="btn" type="button" id="settings-save">保存</button>
+    </footer>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+const PLUGIN_ID = "bot_space";
+const reducedMotion = () =>
+  Boolean(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+const state = {
+  files: [],
+  selected: "",
+  mode: "preview",
+  filter: "",
+  stats: null,
+  file: null,
+};
+
+let loadToken = 0;
+let fileToken = 0;
+
+/* ---------- 基础 ---------- */
+
+async function api(url) {
+  const response = await fetch(url, { headers: { Accept: "application/json" } });
+  let data = null;
+  try {
+    data = await response.json();
+  } catch (error) {
+    data = null;
+  }
+  if (!response.ok || !data || data.ok === false) {
+    const message = (data && data.message) || `请求失败（HTTP ${response.status}）`;
+    throw new Error(message);
+  }
+  return data;
+}
+
+function formatBytes(value) {
+  const number = Number(value) || 0;
+  if (number < 1024) return `${number} B`;
+  if (number < 1048576) return `${(number / 1024).toFixed(number < 10240 ? 1 : 0)} KB`;
+  return `${(number / 1048576).toFixed(1)} MB`;
+}
+
+function formatTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+const basename = (path) => String(path || "").split("/").pop();
+const dirname = (path) => {
+  const text = String(path || "");
+  const cut = text.lastIndexOf("/");
+  return cut < 0 ? "" : text.slice(0, cut);
+};
+
+function blank(title, text) {
+  const node = document.createElement("div");
+  node.className = "blank-card";
+  const strong = document.createElement("strong");
+  strong.className = "blank-title";
+  strong.textContent = title;
+  const sub = document.createElement("span");
+  sub.className = "blank-sub";
+  sub.textContent = text;
+  node.append(strong, sub);
+  return node;
+}
+
+function setStatus(text, ok) {
+  $("status-text").textContent = text;
+  $("status").classList.toggle("off", !ok);
+}
+
+/* ---------- 用量 ---------- */
+
+function renderUsage(info) {
+  state.stats = info;
+  const trashFiles = info.trash_files || 0;
+  const trashBytes = info.trash_bytes || 0;
+  const usedFiles = info.total_files ?? info.files;
+  const usedBytes = info.total_bytes ?? info.bytes;
+  $("stat-files").textContent = info.files;
+  $("stat-files-note").textContent = `上限 ${info.max_files}${trashFiles ? ` · 回收站 ${trashFiles}` : ""}`;
+  $("stat-bytes").textContent = formatBytes(info.bytes);
+  $("stat-bytes-note").textContent = `上限 ${formatBytes(info.max_total_bytes)}${trashBytes ? ` · 回收站 ${formatBytes(trashBytes)}` : ""}`;
+  $("stat-updated").textContent = info.updated ? formatTime(info.updated) : "还没有文件";
+  $("stat-line").textContent = `${info.files} 篇 · ${formatBytes(info.bytes)}${trashFiles ? ` · 回收站 ${trashFiles}` : ""}`;
+  $("files-meta").textContent = `${info.files} 篇 · ${formatBytes(info.bytes)}`;
+  $("mode-note").textContent = info.allow_write ? "模型可写" : "模型只读";
+  $("brand-version").textContent = `v${info.version}`;
+  $("foot-version").textContent = `v${info.version}`;
+  $("trash-btn").textContent = trashFiles ? `回收站 ${trashFiles}` : "回收站";
+  const filePct = info.max_files ? Math.min(100, (usedFiles / info.max_files) * 100) : 0;
+  const bytePct = info.max_total_bytes ? Math.min(100, (usedBytes / info.max_total_bytes) * 100) : 0;
+  setBar("bar-files", "pct-files", filePct);
+  setBar("bar-bytes", "pct-bytes", bytePct);
+}
+
+function setBar(barId, pctId, pct) {
+  const bar = $(barId);
+  bar.style.width = `${pct}%`;
+  bar.className = pct >= 90 ? "danger" : pct >= 70 ? "warn" : "";
+  $(pctId).textContent = `${Math.round(pct)}%`;
+}
+
+/* ---------- 文件树 ---------- */
+
+function renderTree() {
+  const tree = $("tree");
+  tree.replaceChildren();
+  if (!state.files.length) {
+    tree.appendChild(blank("手记还是空的", "模型写第一篇笔记后会出现在这里。"));
+    return;
+  }
+  const keyword = state.filter.trim().toLowerCase();
+  const files = state.files.filter((file) => {
+    if (!keyword) return true;
+    return `${file.path} ${file.title || ""}`.toLowerCase().includes(keyword);
+  });
+  if (!files.length) {
+    tree.appendChild(blank("没有匹配的文件", "换个关键词，或清空过滤框。"));
+    return;
+  }
+  const groups = new Map();
+  files.forEach((file) => {
+    const dir = dirname(file.path);
+    if (!groups.has(dir)) groups.set(dir, []);
+    groups.get(dir).push(file);
+  });
+  Array.from(groups.keys())
+    .sort((left, right) => left.localeCompare(right, "zh-CN"))
+    .forEach((dir) => {
+      const group = document.createElement("div");
+      group.className = "tree-group";
+      const label = document.createElement("div");
+      label.className = "tree-dir";
+      label.textContent = dir || "根目录";
+      group.appendChild(label);
+      groups.get(dir).forEach((file) => group.appendChild(treeItem(file)));
+      tree.appendChild(group);
+    });
+}
+
+function treeItem(file) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "tree-item";
+  button.title = file.path;
+  button.setAttribute("aria-current", file.path === state.selected ? "true" : "false");
+  const name = document.createElement("span");
+  name.className = "tree-name";
+  name.textContent = basename(file.path);
+  const meta = document.createElement("span");
+  meta.className = "tree-meta";
+  meta.textContent = `${formatBytes(file.size)} · ${formatTime(file.modified)}`;
+  button.append(name, meta);
+  button.addEventListener("click", () => selectFile(file.path));
+  return button;
+}
+
+/* ---------- 阅读 ---------- */
+
+async function selectFile(path) {
+  if (!path) {
+    clearView("选择一篇", "从左边文件树里点一篇 Markdown。");
+    return;
+  }
+  state.selected = path;
+  renderTree();
+  const token = ++fileToken;
+  $("file-title").textContent = basename(path);
+  $("file-title").title = "";
+  $("file-path").textContent = path;
+  $("file-meta").textContent = "读取中…";
+  $("content").replaceChildren(blank("读取中…", "正在取这篇 Markdown。"));
+  try {
+    const data = await api(`./file?path=${encodeURIComponent(path)}`);
+    if (token !== fileToken) return;
+    state.file = data;
+    renderView();
+    const hash = `#${encodeURIComponent(path)}`;
+    if (location.hash !== hash) history.replaceState(null, "", hash);
+  } catch (error) {
+    if (token !== fileToken) return;
+    state.file = null;
+    clearView("读不到这篇", error.message);
+  }
+}
+
+function headingOf(text) {
+  const match = String(text || "").match(/^#{1,6}\s+(.+)$/m);
+  if (!match) return "";
+  return match[1].replace(/[*_`]/g, "").trim().slice(0, 80);
+}
+
+function renderView() {
+  const data = state.file;
+  if (!data) return;
+  const title = headingOf(data.content) || basename(data.path);
+  $("file-title").textContent = title;
+  $("file-title").title = title;
+  $("file-path").textContent = data.path;
+  const parts = [formatBytes(data.size), `${data.total_chars} 字`, formatTime(data.modified)];
+  if (data.truncated) parts.push(`只显示前 ${data.content.length} 字`);
+  $("file-meta").textContent = parts.join(" · ");
+  renderContent();
+}
+
+function renderContent() {
+  const data = state.file;
+  const host = $("content");
+  if (!data) {
+    clearView("选择一篇", "从左边文件树里点一篇 Markdown。");
+    return;
+  }
+  host.replaceChildren();
+  if (!data.content.trim()) {
+    host.appendChild(blank("这篇是空的", "模型还没写内容。"));
+    return;
+  }
+  if (state.mode === "raw") {
+    const pre = document.createElement("pre");
+    pre.className = "raw-text";
+    pre.textContent = data.content;
+    host.appendChild(pre);
+  } else {
+    const article = document.createElement("article");
+    article.className = "markdown";
+    article.innerHTML = renderMarkdown(data.content);
+    host.appendChild(article);
+  }
+  host.scrollTop = 0;
+}
+
+function clearView(title, message) {
+  $("file-title").textContent = title;
+  $("file-title").title = "";
+  $("file-path").textContent = "";
+  $("file-meta").textContent = "";
+  $("content").replaceChildren(blank(title, message));
+}
+
+function setMode(mode) {
+  state.mode = mode === "raw" ? "raw" : "preview";
+  $("raw-btn").setAttribute("aria-pressed", String(state.mode === "raw"));
+  $("md-btn").setAttribute("aria-pressed", String(state.mode === "preview"));
+  renderContent();
+}
+
+/* ---------- Markdown 渲染（够用、无依赖、先转义） ---------- */
+
+const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (char) => ESCAPES[char]);
+}
+
+function inline(text) {
+  const slots = [];
+  let value = escapeHtml(text).replace(/`([^`\n]+)`/g, (match, code) => {
+    const index = slots.push(`<code>${code}</code>`) - 1;
+    return `\u0000${index}\u0000`;
+  });
+  value = value.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (match, alt) => `[图片${alt ? `：${alt}` : ""}]`);
+  value = value.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  value = value.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  value = value.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+  value = value.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  value = value.replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+  value = value.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (match, label, url) =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+  );
+  return value.replace(/\u0000(\d+)\u0000/g, (match, index) => slots[Number(index)]);
+}
+
+function splitRow(line) {
+  return line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+}
+
+function isTableDivider(line) {
+  const cells = splitRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function cellAlign(cell) {
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  if (left && right) return "center";
+  if (right) return "right";
+  return "";
+}
+
+function renderTable(header, aligns, rows) {
+  const head = header
+    .map((cell, index) => `<th${aligns[index] ? ` style="text-align:${aligns[index]}"` : ""}>${inline(cell)}</th>`)
+    .join("");
+  const body = rows
+    .map((row) =>
+      `<tr>${row
+        .map((cell, index) => `<td${aligns[index] ? ` style="text-align:${aligns[index]}"` : ""}>${inline(cell)}</td>`)
+        .join("")}</tr>`
+    )
+    .join("");
+  return `<div class="table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function renderMarkdown(source) {
+  const lines = String(source || "").replace(/\r\n?/g, "\n").split("\n");
+  const html = [];
+  let index = 0;
+  let paragraph = [];
+  let list = null;
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<p>${paragraph.map((line) => inline(line)).join("<br>")}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    html.push(`<${list.tag}>${list.items.map((item) => `<li>${inline(item)}</li>`).join("")}</${list.tag}>`);
+    list = null;
+  };
+  const flushAll = () => {
+    flushParagraph();
+    flushList();
+  };
+
+  while (index < lines.length) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushAll();
+      index += 1;
+      continue;
+    }
+
+    if (/^```[\w-]*\s*$/.test(trimmed)) {
+      flushAll();
+      index += 1;
+      const code = [];
+      while (index < lines.length && !/^```\s*$/.test(lines[index].trim())) {
+        code.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      html.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      flushAll();
+      const level = heading[1].length;
+      html.push(`<h${level}>${inline(heading[2])}</h${level}>`);
+      index += 1;
+      continue;
+    }
+
+    if (/^([-*_])(?:\s*\1){2,}$/.test(trimmed)) {
+      flushAll();
+      html.push("<hr>");
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith(">")) {
+      flushAll();
+      const quote = [];
+      while (index < lines.length && lines[index].trim().startsWith(">")) {
+        quote.push(lines[index].trim().replace(/^>\s?/, ""));
+        index += 1;
+      }
+      html.push(`<blockquote>${renderMarkdown(quote.join("\n"))}</blockquote>`);
+      continue;
+    }
+
+    if (trimmed.includes("|") && index + 1 < lines.length && isTableDivider(lines[index + 1])) {
+      flushAll();
+      const header = splitRow(lines[index]);
+      index += 1;
+      const aligns = splitRow(lines[index]).map(cellAlign);
+      index += 1;
+      const rows = [];
+      while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
+        rows.push(splitRow(lines[index]));
+        index += 1;
+      }
+      html.push(renderTable(header, aligns, rows));
+      continue;
+    }
+
+    const unordered = trimmed.match(/^[-*+]\s+(.+)$/);
+    const ordered = trimmed.match(/^\d+[.)]\s+(.+)$/);
+    if (unordered || ordered) {
+      flushParagraph();
+      const tag = unordered ? "ul" : "ol";
+      if (!list || list.tag !== tag) {
+        flushList();
+        list = { tag, items: [] };
+      }
+      list.items.push((unordered || ordered)[1]);
+      index += 1;
+      continue;
+    }
+
+    paragraph.push(line);
+    index += 1;
+  }
+
+  flushAll();
+  return html.join("\n");
+}
+
+/* ---------- 弹窗 ---------- */
+
+function openMask(dialog) {
+  if (!dialog || typeof dialog.showModal !== "function" || dialog.open) return;
+  dialog._closeToken = (dialog._closeToken || 0) + 1;
+  clearTimeout(dialog._closeTimer);
+  dialog.classList.remove("is-closing");
+  dialog.tabIndex = -1;
+  dialog.showModal();
+  dialog.focus();
+}
+
+// host-gap: 主项目 closeDialog 只处理 #dialog，插件页有多个 dialog 且没加载 plugins.js。
+// 这里只切宿主的 .is-closing，复用 style.css 的 dialog-out / backdrop-out 时序；
+// 等 ui.js 提供通用 helper 后替换。
+function closeMask(dialog) {
+  if (!dialog || !dialog.open || dialog.classList.contains("is-closing")) return;
+  if (reducedMotion()) {
+    dialog.close();
+    return;
+  }
+  const token = (dialog._closeToken || 0) + 1;
+  dialog._closeToken = token;
+  dialog.classList.add("is-closing");
+  let done = false;
+  const finish = () => {
+    if (done || dialog._closeToken !== token) return;
+    done = true;
+    clearTimeout(dialog._closeTimer);
+    dialog.removeEventListener("animationend", onEnd);
+    dialog.classList.remove("is-closing");
+    dialog.close();
+  };
+  const onEnd = (event) => {
+    if (event.target === dialog && event.animationName === "dialog-out") finish();
+  };
+  dialog.addEventListener("animationend", onEnd);
+  dialog._closeTimer = window.setTimeout(finish, 330);
+}
+
+/* ---------- 审计 ---------- */
+
+async function openAudit() {
+  openMask($("audit-mask"));
+  await loadAudit();
+}
+
+async function loadAudit() {
+  const list = $("audit-list");
+  list.replaceChildren(blank("读取中…", "正在取最近记录。"));
+  $("audit-hint").textContent = "";
+  try {
+    const data = await api("./audit?limit=50");
+    renderAudit(data.items || []);
+  } catch (error) {
+    list.replaceChildren(blank("读不到审计", error.message));
+  }
+}
+
+function renderAudit(items) {
+  const list = $("audit-list");
+  list.replaceChildren();
+  if (!items.length) {
+    list.appendChild(blank("还没有工具调用", "模型开始用 space_* 工具后，这里会出现记录。"));
+    $("audit-hint").textContent = "0 条";
+    return;
+  }
+  const head = document.createElement("div");
+  head.className = "audit-head";
+  ["时间", "工具", "路径", "字数", "结果"].forEach((text) => {
+    const cell = document.createElement("span");
+    cell.textContent = text;
+    head.appendChild(cell);
+  });
+  list.appendChild(head);
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "audit-row";
+    const time = document.createElement("span");
+    time.className = "audit-time";
+    time.textContent = formatTime(item.ts);
+    time.title = item.ts || "";
+    const tool = document.createElement("span");
+    tool.className = "audit-tool";
+    tool.textContent = String(item.tool || "-").replace(/^space_/, "");
+    const path = document.createElement("span");
+    path.className = "audit-path";
+    path.textContent = item.path || "-";
+    path.title = item.error ? `${item.path || "-"}\n${item.error}` : item.path || "-";
+    const chars = document.createElement("span");
+    chars.className = "audit-chars";
+    chars.textContent = String(item.chars ?? 0);
+    const ok = document.createElement("span");
+    ok.className = item.ok ? "audit-ok" : "audit-bad";
+    ok.textContent = item.ok ? "成功" : "失败";
+    row.append(time, tool, path, chars, ok);
+    list.appendChild(row);
+  });
+  $("audit-hint").textContent = `最近 ${items.length} 条`;
+}
+
+/* ---------- 回收站 ---------- */
+
+async function openTrash() {
+  openMask($("trash-mask"));
+  await loadTrash();
+}
+
+async function loadTrash() {
+  const list = $("trash-list");
+  list.replaceChildren(blank("读取中…", "正在取回收站。"));
+  $("trash-hint").textContent = "";
+  try {
+    const data = await api("./trash?limit=50");
+    renderTrash(data.items || [], data.total || 0);
+  } catch (error) {
+    list.replaceChildren(blank("读不到回收站", error.message));
+  }
+}
+
+function renderTrash(items, total) {
+  const list = $("trash-list");
+  list.replaceChildren();
+  if (!items.length) {
+    list.appendChild(blank("回收站是空的", "删除文件后会出现在这里，模型可以恢复。"));
+    $("trash-hint").textContent = "0 条";
+    return;
+  }
+  const head = document.createElement("div");
+  head.className = "trash-head";
+  ["id", "原路径", "大小", "删除时间"].forEach((text) => {
+    const cell = document.createElement("span");
+    cell.textContent = text;
+    head.appendChild(cell);
+  });
+  list.appendChild(head);
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "trash-row";
+    const id = document.createElement("span");
+    id.className = "trash-id";
+    id.textContent = item.id || "-";
+    id.title = item.id || "";
+    const path = document.createElement("span");
+    path.className = "trash-path";
+    path.textContent = item.path || "-";
+    path.title = item.path || "-";
+    const size = document.createElement("span");
+    size.className = "trash-size";
+    size.textContent = formatBytes(item.size);
+    const time = document.createElement("span");
+    time.className = "trash-time";
+    time.textContent = formatTime(item.deleted_at);
+    time.title = item.deleted_at || "";
+    row.append(id, path, size, time);
+    list.appendChild(row);
+  });
+  $("trash-hint").textContent = total > items.length
+    ? `显示最近 ${items.length} / ${total} 条`
+    : `${total} 条`;
+}
+
+/* ---------- 设置 ---------- */
+
+let settingFields = [];
+let settingReaders = {};
+
+function settingControl(field, value) {
+  const wrap = document.createElement("div");
+  wrap.className = "field";
+  wrap.dataset.field = field.key;
+  if (field.multiline) wrap.classList.add("field-wide");
+
+  const head = document.createElement("div");
+  head.className = "field-head";
+  const label = document.createElement("label");
+  label.textContent = field.label || field.key;
+  const id = `setting-${field.key}`;
+  label.htmlFor = id;
+  const key = document.createElement("span");
+  key.className = "key";
+  key.textContent = field.key;
+  head.append(label, key);
+  wrap.append(head);
+
+  let read;
+  if (field.type === "bool" || field.type === "boolean") {
+    const row = document.createElement("div");
+    row.className = "switch-row";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.role = "switch";
+    input.className = "input";
+    input.id = id;
+    input.checked = Boolean(value);
+    const stateNode = document.createElement("span");
+    stateNode.className = "state";
+    stateNode.textContent = input.checked ? "开" : "关";
+    input.addEventListener("change", () => {
+      stateNode.textContent = input.checked ? "开" : "关";
+    });
+    row.append(input, stateNode);
+    wrap.append(row);
+    read = () => input.checked;
+  } else if (field.type === "number") {
+    const input = document.createElement("input");
+    input.className = "input";
+    input.id = id;
+    input.type = "number";
+    if (field.min !== undefined) input.min = field.min;
+    if (field.max !== undefined) input.max = field.max;
+    if (field.step !== undefined) input.step = field.step;
+    input.value = value === null || value === undefined ? "" : String(value);
+    wrap.append(input);
+    read = () => Number(input.value);
+  } else {
+    const input = document.createElement("input");
+    input.className = "input";
+    input.id = id;
+    input.type = "text";
+    input.value = value === null || value === undefined ? "" : String(value);
+    wrap.append(input);
+    read = () => input.value;
+  }
+  if (field.help) {
+    const hint = document.createElement("p");
+    hint.className = "hint";
+    hint.textContent = field.help;
+    wrap.append(hint);
+  }
+  settingReaders[field.key] = read;
+  return wrap;
+}
+
+function renderSettings(fields, values) {
+  settingFields = fields;
+  settingReaders = {};
+  const body = $("settings-body");
+  body.replaceChildren();
+  if (!fields.length) {
+    body.innerHTML = '<p class="hint">这个插件没有可改的设置。</p>';
+    $("settings-save").disabled = false;
+    return;
+  }
+  const groups = [];
+  for (const field of fields) {
+    const key = field.group || "";
+    let group = groups.find((item) => item.key === key);
+    if (!group) {
+      group = { key, label: field.group_label || "", fields: [] };
+      groups.push(group);
+    }
+    group.fields.push(field);
+  }
+  for (const group of groups) {
+    const section = document.createElement("section");
+    section.className = "dialog-group";
+    if (group.label) {
+      const title = document.createElement("h4");
+      title.className = "dialog-group-title";
+      title.textContent = group.label;
+      section.append(title);
+    }
+    const grid = document.createElement("div");
+    grid.className = "dialog-grid";
+    for (const field of group.fields) {
+      grid.append(settingControl(field, values ? values[field.key] : undefined));
+    }
+    section.append(grid);
+    body.append(section);
+  }
+  $("settings-save").disabled = false;
+}
+
+async function openSettings() {
+  $("settings-hint").textContent = "";
+  $("settings-body").innerHTML = '<p class="hint">读取中…</p>';
+  settingFields = [];
+  settingReaders = {};
+  $("settings-save").disabled = true;
+  openMask($("settings-mask"));
+  try {
+    const res = await fetch(`/api/plugins/${PLUGIN_ID}/settings`, { cache: "no-store" });
+    let data = null;
+    try { data = await res.json(); } catch (error) { /* 下面统一报错 */ }
+    if (!data) throw new Error(`服务器返回了 ${res.status}`);
+    if (!res.ok || data.ok === false) throw new Error(data.message || `读取失败（${res.status}）`);
+    if (!$("settings-mask").open) return;
+    renderSettings(data.fields || [], data.values || {});
+  } catch (error) {
+    if (!$("settings-mask").open) return;
+    $("settings-body").innerHTML = `<p class="hint">读取设置失败：${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function saveSettings() {
+  const values = {};
+  for (const [key, read] of Object.entries(settingReaders)) values[key] = read();
+  const button = $("settings-save");
+  button.disabled = true;
+  $("settings-hint").textContent = "";
+  try {
+    const res = await fetch(`/api/plugins/${PLUGIN_ID}/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values }),
+    });
+    let data = null;
+    try { data = await res.json(); } catch (error) { /* 下面统一报错 */ }
+    if (!data) throw new Error(`服务器返回了 ${res.status}`);
+    if (!res.ok || data.ok === false) throw new Error(data.message || "保存失败");
+    closeMask($("settings-mask"));
+    setStatus("设置已保存", true);
+    await loadAll();
+  } catch (error) {
+    $("settings-hint").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/* ---------- 主题 / 全屏 ---------- */
+
+function applyTheme(theme) {
+  const dark = theme === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  document.documentElement.classList.toggle("dark", dark);
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", dark ? "#0a0f1a" : "#f9fcfe");
+  $("theme-btn").textContent = dark ? "◑" : "◐";
+  const label = dark ? "切到浅色" : "切到深色";
+  $("theme-btn").setAttribute("aria-label", label);
+  $("theme-btn").title = label;
+}
+
+/* ---------- 加载 ---------- */
+
+async function loadAll() {
+  const token = ++loadToken;
+  setStatus("读取中", true);
+  try {
+    const [ping, tree] = await Promise.all([api("./ping"), api("./tree")]);
+    if (token !== loadToken) return;
+    renderUsage(ping);
+    state.files = tree.files || [];
+    let hashed = "";
+    try {
+      hashed = decodeURIComponent((location.hash || "").slice(1));
+    } catch (error) {
+      hashed = "";
+    }
+    const wanted = state.selected && state.files.some((file) => file.path === state.selected)
+      ? state.selected
+      : hashed;
+    const exists = state.files.some((file) => file.path === wanted);
+    if (exists) {
+      await selectFile(wanted);
+    } else if (state.files.length) {
+      await selectFile(state.files[0].path);
+    } else {
+      state.selected = "";
+      renderTree();
+      clearView("手记还是空的", "模型觉得值得记的时候会自己写进来。");
+    }
+    setStatus("正常", true);
+  } catch (error) {
+    if (token !== loadToken) return;
+    setStatus("接口不可达", false);
+    renderTreeError(error.message);
+    clearView("读不到手记", error.message);
+  }
+}
+
+function renderTreeError(message) {
+  $("tree").replaceChildren(blank("接口不可达", message));
+  $("files-meta").textContent = "读取失败";
+}
+
+/* ---------- 事件 ---------- */
+
+$("refresh").addEventListener("click", () => loadAll());
+$("trash-btn").addEventListener("click", openTrash);
+$("trash-refresh").addEventListener("click", loadTrash);
+$("audit-btn").addEventListener("click", openAudit);
+$("audit-refresh").addEventListener("click", loadAudit);
+$("settings-btn").addEventListener("click", openSettings);
+$("settings-save").addEventListener("click", saveSettings);
+$("filter").addEventListener("input", () => {
+  state.filter = $("filter").value;
+  renderTree();
+});
+$("raw-btn").addEventListener("click", () => setMode("raw"));
+$("md-btn").addEventListener("click", () => setMode("preview"));
+$("theme-btn").addEventListener("click", (event) => {
+  const current = document.documentElement.getAttribute("data-theme");
+  const next = current === "dark" ? "light" : "dark";
+  const x = event.clientX ?? window.innerWidth / 2;
+  const y = event.clientY ?? 40;
+  const radius = Math.hypot(
+    Math.max(x, window.innerWidth - x),
+    Math.max(y, window.innerHeight - y),
+  );
+  const root = document.documentElement;
+  root.style.setProperty("--vt-x", `${x}px`);
+  root.style.setProperty("--vt-y", `${y}px`);
+  root.style.setProperty("--vt-r", `${radius}px`);
+
+  try {
+    localStorage.setItem("qqbotlite-theme", next);
+  } catch (error) {}
+
+  if (typeof document.startViewTransition !== "function" || reducedMotion()) {
+    applyTheme(next);
+    return;
+  }
+  document.startViewTransition(() => applyTheme(next));
+  $("theme-btn").animate(
+    [{ transform: "rotate(0deg)" }, { transform: "rotate(180deg)" }],
+    { duration: 240, easing: "cubic-bezier(.22, 1.15, .36, 1)" },
+  );
+});
+$("full-btn").addEventListener("click", async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch (error) {}
+});
+
+$$("[data-close]").forEach((button) => {
+  button.addEventListener("click", () => closeMask(button.closest("dialog")));
+});
+$$("dialog.modal").forEach((dialog) => {
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeMask(dialog);
+  });
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) closeMask(dialog);
+  });
+  dialog.addEventListener("close", () => dialog.classList.remove("is-closing"));
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) return;
+  const target = event.target;
+  const tag = target && target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || (target && target.isContentEditable)) return;
+  event.preventDefault();
+  $("filter").focus();
+});
+
+applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+loadAll();
+</script>
+</body>
+</html>

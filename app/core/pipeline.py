@@ -11,7 +11,7 @@ from typing import AsyncIterator, Callable
 
 from ..config import Config
 from ..context.store import MessageStore
-from ..context.window import build_history, keep_addressed
+from ..context.window import build_ambient, build_history, keep_addressed, pick_anchor_window
 from ..llm.client import LLMClient, LLMError, ThinkingBudgetExceeded
 from ..llm.prompt import build_messages, build_system_prompt, scene_line
 from ..llm.tokens import estimate_text_tokens
@@ -22,12 +22,24 @@ from ..onebot.members import MemberDirectory
 from ..onebot.protocol import ImageRef
 from ..persona import Persona
 from ..pluginkit.registry import ExtensionRegistry, HookContext
+from ..pluginkit.tools import ToolContext, ToolEntry
 from ..reply.segments import Segmenter
 from ..reply.sender import ReplySender, clean_text
 from ..sdk import CommandContext
+from .tool_runner import ToolRunner
 from .trigger import Decision, decide
 
 log = logging.getLogger(__name__)
+
+# 512 边长一张图约 250~400 token；预算按 320 粗估，宁可少塞文本也别让图片把窗口挤爆。
+_HISTORY_IMAGE_TOKENS = 320
+
+
+@dataclass(slots=True)
+class _QuotedInfo:
+    sender: str = ""
+    text: str = ""
+    images: list[ImageRef] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -91,6 +103,7 @@ class ChatService:
         self._group_names: dict[int, tuple[str, float]] = {}
         self._anchors: dict[str, int] = {}
         self._llm_slot = asyncio.Semaphore(max(cfg.llm.max_concurrency, 1))
+        self.tool_runner = ToolRunner(llm)
 
     # ---------- 入口 ----------
 
@@ -116,17 +129,24 @@ class ChatService:
         )
 
         group_label = await self._group_label(event)
-        # 引用了一张图、但当前消息本身只有文字：把那张图取过来。
-        # 群里常用的姿势是“先发图，再引用那张图说一句”，不取的话模型只会回“图呢？”。
-        # 只有真要回复时才去取，否则每次引用都要多打一次 get_msg。
-        if decision.should and conn is not None and not event.content.images and event.reply_id:
+        # 引用消息：把被引用那条的发送者/文本/图片取过来一次。
+        # 只有真要回复时才取，避免每条引用都多打一次 get_msg。
+        if decision.should and conn is not None and event.reply_id:
             try:
-                quoted = await self._quoted_images(conn, event.reply_id)
-                if quoted:
-                    event.content.images.extend(quoted)
-                    log.info("从引用里取到 %d 张图片 reply=%s", len(quoted), event.reply_id, extra={"tag": "sys"})
-            except Exception:  # noqa: BLE001 - 取不到就当作没有图
-                log.debug("取引用图片失败 reply=%s", event.reply_id, exc_info=True)
+                quoted = await self._quoted_info(conn, event.reply_id)
+                event.content.quoted_sender = quoted.sender or None
+                event.content.quoted_text = quoted.text or None
+                event.content.quoted_has_image = bool(quoted.images)
+                if not event.content.images and quoted.images:
+                    event.content.images.extend(quoted.images)
+                    log.info(
+                        "从引用里取到 %d 张图片 reply=%s",
+                        len(quoted.images),
+                        event.reply_id,
+                        extra={"tag": "sys"},
+                    )
+            except Exception:  # noqa: BLE001 - 取不到就退回原来的提示
+                log.debug("取引用消息失败 reply=%s", event.reply_id, exc_info=True)
         if conn is not None and event.is_group and event.group_id is not None:
             # 把 at 123456 还原成 at 群名片(123456)，模型才知道在叫谁
             try:
@@ -177,10 +197,11 @@ class ChatService:
 
         # 历史要在当前消息落库前取，避免把“当前这条”重复送进模型。
         history = self._history_window(session)
+        ambient = self._ambient_context(session, event.self_id) if event.is_group else ""
         # 图只在真要回这条消息时才下载解析。群里绝大部分图跟它无关，
         # 之前的写法是每张都下、每张都解码，日志里一片“图片 N 张”白干活。
         prepared = await self.images.prepare(event.content.images) if decision.should else []
-        self.store.add(
+        user_row_id = self.store.add(
             session,
             "user",
             event.content.text,
@@ -211,7 +232,16 @@ class ChatService:
             return
 
         async with self._lock_for(session):
-            await self._reply(conn, event, history, ctx, decision, prepared)
+            await self._reply(
+                conn,
+                event,
+                history,
+                ctx,
+                decision,
+                prepared=prepared,
+                trigger_id=user_row_id,
+                ambient=ambient,
+            )
 
     # ---------- 命令 ----------
 
@@ -293,6 +323,8 @@ class ChatService:
         ctx: HookContext,
         decision: Decision,
         prepared: list | None = None,
+        trigger_id: int | None = None,
+        ambient: str = "",
     ) -> None:
         timing = _Timing()
         budget = self.cfg.context.max_tokens
@@ -301,12 +333,21 @@ class ChatService:
             # 软件侧的硬上限：prompt 再长也不许超过模型窗口的一半，留出生长的余地。
             budget = min(budget, max(int(cap * 0.5), 256))
         history = build_history(
-            history_messages, self.cfg.context, is_group=event.is_group, budget_override=budget
+            history_messages,
+            self.cfg.context,
+            is_group=event.is_group,
+            budget_override=self._history_budget(budget, history_messages, ambient, prepared),
         )
         history = self._attach_history_images(history)
+        self._log_context(event.session_key, budget, history_messages, history, ambient, prepared)
         ctx.history = history
 
-        text = _prompt_text(event, quoted=decision.reason == "quote", cfg=self.cfg)
+        text = _prompt_text(
+            event,
+            quoted=decision.reason == "quote",
+            cfg=self.cfg,
+            ambient=ambient,
+        )
         suffix = await self.extensions.collect_user_suffix(ctx)
         if suffix:
             text = f"{text}\n\n{suffix}" if text else suffix
@@ -317,13 +358,22 @@ class ChatService:
         extra = await self.extensions.collect_system_prompt(ctx)
         system_prompt = build_system_prompt(self.cfg, self.persona.text, extra_sections=extra)
         messages = build_messages(system_prompt, history, content, self.cfg.context.merge_same_role)
+        tools = self._tools_for(event)
+        tool_context = ToolContext(
+            plugin="",
+            session_key=event.session_key,
+            is_group=event.is_group,
+            is_admin=str(event.user_id) in self.cfg.commands.admins,
+            trigger="chat",
+        )
 
         log.debug(
-            "生成回复 session=%s reason=%s 历史=%d条 system=%d字",
+            "生成回复 session=%s reason=%s 历史=%d条 system=%d字 工具=%d",
             event.session_key,
             decision.reason,
             len(history),
             len(system_prompt),
+            len(tools),
         )
 
         collected: list[str] = []
@@ -338,7 +388,7 @@ class ChatService:
                 return await self.sender.deliver(
                     conn,
                     event,
-                    self._pieces(messages, ctx, collected, timing, override),
+                    self._pieces(messages, ctx, collected, timing, override, tools, tool_context),
                     on_sent=_record_sent,
                 )
 
@@ -366,12 +416,12 @@ class ChatService:
         except LLMError as exc:
             log.error("模型请求失败: %s", exc)
             if collected:
-                self._store_reply(event, collected)
+                self._store_reply(event, collected, trigger_id)
             return
         except Exception:  # noqa: BLE001
             log.exception("回复流程异常 session=%s", event.session_key)
             if collected:
-                self._store_reply(event, collected)
+                self._store_reply(event, collected, trigger_id)
             return
 
         # 思考把配额吃光、正文一个字都没有：换无思考模式兜一次。
@@ -399,7 +449,7 @@ class ChatService:
             # 写回上下文的是“实际发出去的文本”（at 段已渲染成 at 名字(QQ)），
             # 不是模型原文。否则历史里会保留模型写的 @，下一轮它会照着学。
             texts = result.texts if result is not None and result.texts else collected
-            self._store_reply(event, texts)
+            self._store_reply(event, texts, trigger_id)
         elif result is None or result.sent == 0:
             log.warning(
                 "重答后仍然没有正文，这条没有发出去 | %s | %s | msg=%s",
@@ -433,7 +483,45 @@ class ChatService:
         collected: list[str],
         timing: _Timing,
         override: dict | None = None,
+        tools: dict[str, ToolEntry] | None = None,
+        tool_context: ToolContext | None = None,
     ) -> AsyncIterator[str]:
+        if tools and tool_context is not None:
+            # 工具循环必须先拿到最终正文，不能边流边执行 tool_calls；第一期只走非流式。
+            run = await self.tool_runner.run(
+                messages,
+                tools,
+                tool_context,
+                override=override,
+            )
+            text = run.text.strip()
+            if not text:
+                return
+            timing.mark_first()
+            if run.calls:
+                log.info(
+                    "工具循环 session=%s 轮=%d 调用=%d 正文=%d字",
+                    ctx.session_key,
+                    run.rounds,
+                    run.calls,
+                    len(text),
+                )
+            if not self.cfg.reply.segments:
+                out = await self.extensions.after_reply(ctx, text)
+                collected.append(out)
+                yield out
+                return
+            segmenter = Segmenter(self.cfg.reply.segment_max_chars, self.cfg.reply.max_segments)
+            for piece in segmenter.feed(text):
+                out = await self.extensions.after_reply(ctx, piece)
+                collected.append(out)
+                yield out
+            for piece in segmenter.flush():
+                out = await self.extensions.after_reply(ctx, piece)
+                collected.append(out)
+                yield out
+            return
+
         if not self.cfg.reply.segments:
             text = await self._complete(messages, override)
             if text.strip():
@@ -482,13 +570,27 @@ class ChatService:
     async def _complete(self, messages: list[dict], override: dict | None = None) -> str:
         return await self.llm.complete(messages, override=override)
 
+    def _tools_for(self, event: MessageEvent) -> dict[str, ToolEntry]:
+        """工具对所有会话暴露；手记不分群聊私聊，不按会话类型分流。
+
+        event 参数保留：以后若有全局策略（配置、插件级开关）仍可能需要它；
+        但不要在这里用 is_group 决定给不给工具。
+        """
+        return self.extensions.collect_tools()
+
     # ---------- 杂项 ----------
 
-    def _store_reply(self, event: MessageEvent, collected: list[str]) -> None:
+    def _store_reply(self, event: MessageEvent, collected: list[str], reply_to: int | None = None) -> None:
         text = clean_text("".join(collected), self.cfg.persona.nickname)
         if not text:
             return
-        self.store.add(event.session_key, "assistant", text, speaker=self.cfg.persona.nickname)
+        self.store.add(
+            event.session_key,
+            "assistant",
+            text,
+            speaker=self.cfg.persona.nickname,
+            reply_to=reply_to,
+        )
 
     def _lock_for(self, session: str) -> asyncio.Lock:
         lock = self._locks.get(session)
@@ -547,6 +649,60 @@ class ChatService:
             parts.append(f"{name}({qq})" if name else qq)
         return "、".join(parts)
 
+    def _history_budget(
+        self,
+        budget: int,
+        history_messages: list,
+        ambient: str,
+        prepared: list | None,
+    ) -> int:
+        """给历史图、当前图和 ambient 预留 token；它们都算在总上下文里。"""
+        slots = max(self.cfg.images.history_images, 0)
+        reserve = estimate_text_tokens(ambient)
+        if slots > 0 and any(getattr(message, "images", None) for message in history_messages):
+            reserve += slots * _HISTORY_IMAGE_TOKENS
+        reserve += len(prepared or []) * _HISTORY_IMAGE_TOKENS
+        return max(budget - reserve, 256) if reserve else budget
+
+    def _log_context(
+        self,
+        session: str,
+        budget: int,
+        history_messages: list,
+        history: list,
+        ambient: str,
+        prepared: list | None,
+    ) -> None:
+        ids = [message.id for message in history_messages]
+        id_range = f"{ids[0]}..{ids[-1]}" if ids else "-"
+        text_tokens = 0
+        image_count = 0
+        for item in history:
+            content = item.get("content")
+            if isinstance(content, list):
+                text = " ".join(
+                    str(part.get("text", "")) for part in content if part.get("type") == "text"
+                )
+                image_count += sum(1 for part in content if part.get("type") == "image_url")
+            else:
+                text = str(content)
+            text_tokens += estimate_text_tokens(text) + 4
+        ambient_lines = sum(1 for line in ambient.splitlines() if "「" in line)
+        total = text_tokens + image_count * _HISTORY_IMAGE_TOKENS + estimate_text_tokens(ambient)
+        log.info(
+            "上下文 session=%s 历史=%d/%d 条（id %s） ambient=%d 行 预算=%d 估算=%d "
+            "token 图片=%d（当前 %d）",
+            session,
+            len(history),
+            len(history_messages),
+            id_range,
+            ambient_lines,
+            budget,
+            total,
+            image_count,
+            len(prepared or []),
+        )
+
     def _attach_history_images(self, history: list[dict]) -> list[dict]:
         """把最近几张历史图重新塞回它们原来的那一轮。
 
@@ -582,46 +738,80 @@ class ChatService:
 
         原来每来一条消息就 recent(100)，最旧那条被挤掉，前缀整个位移，
         llama.cpp 只能从零重新预填充（实测 1668 token ≈ 2.5 秒）。
-        这里改成按锚点取：窗口从 60% 涨到 125% 才推进一次锚点，
+        这里改成按锚点取：窗口从上限涨到 125% 才推进一次锚点，
         平时只是往尾部追加，前缀不动，缓存就能复用。
+
+        注意必须取“锚点之后最新的 N 条”，不能取最早的 N 条：
+        `store.after()` 是最早优先，历史一旦超过上限，窗口就会停在旧消息上，
+        最新的对话根本进不来（实测落后 431 条，模型看起来像鱼的记忆）。
         """
         limit = max(self.cfg.context.max_messages, 20)
         hard = int(limit * 1.25)
         anchor = self._anchors.get(session, 0)
-        messages = self.store.after(session, anchor, hard + 1)
+        # latest_after 的 headroom 要明显大于上限；平时 prune 只留 200 条左右，
+        # 这里给 4 倍余量，历史再长也不会把最新的截掉。
+        headroom = max(hard * 4, 512)
+        messages = self.store.latest_after(session, anchor, headroom)
         if self.cfg.context.only_addressed:
             messages = keep_addressed(messages)
-        if len(messages) <= hard:
-            return messages
+        messages, new_anchor = pick_anchor_window(messages, limit)
+        if new_anchor is not None:
+            self._anchors[session] = new_anchor
+            log.debug("推进上下文锚点 session=%s 保留 %d 条", session, len(messages))
+        return messages
 
-        keep = messages[-max(int(limit * 0.6), 10) :]
-        self._anchors[session] = keep[0].id - 1
-        log.debug("推进上下文锚点 session=%s 保留 %d 条", session, len(keep))
-        return keep
+    def _ambient_context(self, session: str, self_id: int | None = None) -> str:
+        """上次回复之后的群聊，一次性注入当前消息；不进入持久历史。"""
+        last = self.store.last_role_id(session, "assistant")
+        messages = self.store.latest_after(session, last, 200)
+        return build_ambient(messages, self_id=self_id)
 
-    async def _quoted_images(self, conn: OneBotConnection, reply_id: str) -> list:
-        """用 get_msg 把被引用那条消息里的图捞出来。拿不到就返回空。"""
+    async def _quoted_info(self, conn: OneBotConnection, reply_id: str) -> _QuotedInfo:
+        """用 get_msg 取被引用消息的发送者、文本、图片。拿不到就返回空。"""
         try:
             message_id: object = int(reply_id) if reply_id.lstrip("-").isdigit() else reply_id
         except (TypeError, ValueError):
             message_id = reply_id
         data = await conn.call_action("get_msg", {"message_id": message_id}, 5.0)
         if not isinstance(data, dict):
-            return []
+            return _QuotedInfo()
+        sender = data.get("sender")
+        sender_name = ""
+        if isinstance(sender, dict):
+            sender_name = str(
+                sender.get("card") or sender.get("nickname") or sender.get("user_id") or ""
+            ).strip()
         segments = data.get("message")
-        if not isinstance(segments, list):
-            return []
-        images = []
-        for segment in segments:
-            if not isinstance(segment, dict) or segment.get("type") != "image":
-                continue
-            payload = segment.get("data") or {}
-            url, file = payload.get("url"), payload.get("file")
-            if url or file:
-                images.append(ImageRef(url=url, file=file, summary=payload.get("summary")))
-            if len(images) >= self.cfg.images.max_per_message:
-                break
-        return images
+        images: list[ImageRef] = []
+        parts: list[str] = []
+        if isinstance(segments, list):
+            for segment in segments:
+                if not isinstance(segment, dict):
+                    continue
+                seg_type = segment.get("type")
+                payload = segment.get("data") or {}
+                if seg_type == "text":
+                    parts.append(str(payload.get("text") or ""))
+                elif seg_type == "image":
+                    if len(images) >= self.cfg.images.max_per_message:
+                        continue
+                    url, file = payload.get("url"), payload.get("file")
+                    if url or file:
+                        images.append(
+                            ImageRef(url=url, file=file, summary=payload.get("summary"))
+                        )
+                elif seg_type == "face":
+                    parts.append("[表情]")
+                elif seg_type == "at":
+                    name = payload.get("name") or payload.get("qq")
+                    if name:
+                        parts.append(f" at {name}")
+        elif isinstance(segments, str):
+            parts.append(segments)
+        text = " ".join("".join(parts).split())
+        if len(text) > 200:
+            text = text[:200] + "…"
+        return _QuotedInfo(sender=sender_name, text=text, images=images)
 
     async def _group_label(self, event: MessageEvent) -> str:
         """群「群名」(群号)。群名走 get_group_info，缓存 10 分钟，失败 1 分钟后重试。"""
@@ -684,7 +874,13 @@ def _reasoning_tokens(llm: LLMClient) -> int | None:
     return value if isinstance(value, int) else None
 
 
-def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | None = None) -> str:
+def _prompt_text(
+    event: MessageEvent,
+    *,
+    quoted: bool = False,
+    cfg: Config | None = None,
+    ambient: str = "",
+) -> str:
     """当前这条 user 消息：场景行 + 正文。
 
     场景信息（时间/群/说话人）必须放在这里而不是 system——放 system 里每句都变，
@@ -716,7 +912,22 @@ def _prompt_text(event: MessageEvent, *, quoted: bool = False, cfg: Config | Non
                 self_name=event.self_name,
             )
         )
-    if quoted:
+    if ambient:
+        lines.append(ambient)
+    quote_text = getattr(event.content, "quoted_text", None)
+    quote_sender = getattr(event.content, "quoted_sender", None)
+    quote_image = getattr(event.content, "quoted_has_image", False)
+    if quote_text or quote_image:
+        quoted_block = ["<Quoted Message>"]
+        if quote_sender:
+            quoted_block.append(f"「{quote_sender}」")
+        if quote_text:
+            quoted_block.append(quote_text)
+        if quote_image:
+            quoted_block.append("[图片]")
+        quoted_block.append("</Quoted Message>")
+        lines.append("\n".join(quoted_block))
+    elif quoted:
         lines.append("（他引用了你之前说的话）")
     if text:
         lines.append(text)

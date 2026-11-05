@@ -4,7 +4,7 @@
 命令、设置和网页面板。本文既是**接口契约**，也是**写作规范**——两者冲突时，以本文的
 「必须」为准。
 
-当前接口版本：`api = 1`
+当前接口版本：`api = 2`
 
 自检：
 
@@ -61,7 +61,7 @@ plugins/<id>/
   core/            可选，纯逻辑，不 import app.*
   tools/           可选，运维脚本（导入导出之类）
   tests/           可选，pytest，用主程序同一个 venv
-  README.md        建议，用法 + 截图
+  README.md        建议，用法（Markdown；面板不加载图片，截图不会显示）
   CHANGELOG.md     建议，按版本记
   docs/            可选，截图等
 ```
@@ -75,15 +75,17 @@ plugins/<id>/
 ## 3. 清单：plugin.toml
 
 ```toml
+id = "whale_lexicon"               # 可选；写了必须等于目录名，根目录布局的 ZIP 可用它确定 id
 title = "鲸语汇"                   # 必需，面板和日志里显示的名字
 description = "一句话说明"
 version = "0.4.1"                 # SemVer x.y.z
 author = "贰叔"
+repository = "https://github.com/ersalt/whale_lexicon"  # 可选，卡片上显示 GitHub/仓库链接
 
-api = 1                           # 插件接口版本，默认 1；比主程序新的会拒绝加载
+api = 2                           # 插件接口版本，默认 2；比主程序新的会拒绝加载
 entry = "plugin.py"               # 可选，默认 plugin.py
 panel = "/plugins/whale_lexicon"  # 可选，写了才显示「打开面板」
-app_version = ">=0.2"             # 可选，不满足只警告，不拦加载
+app_version = ">=0.3"             # 可选；不满足只警告，不拦加载；也可直接写 "0.3"（最低版本）
 
 [[config]]                        # 可选，有值才显示「设置」
 key = "enabled"                   # 存进 data/plugin_data/<id>/settings.toml 的键
@@ -114,6 +116,10 @@ labels = ["自动识别", "保持思考", "自定义"]
 **元数据与代码分开是硬要求**：列插件列表时绝不执行插件代码。写坏的插件只能显示成
 一张带错误的卡，不能把整个列表拖垮。
 
+`app_version` 是给插件声明“适配哪些 qq-bot-lite 版本”的，和插件自己的 `version` 不是一回事。
+主程序会拿它和当前版本比较，不满足只在卡片上显示黄色提示、日志记一条警告，**不拦加载**；
+真正拦加载的是 `api`（接口契约版本）。
+
 字段不够用时实现 `settings_fields(ctx, fields)` 在运行时改写（见第 5 节）。
 
 ---
@@ -132,7 +138,8 @@ class MyPlugin(Extension):
 def setup(ctx: PluginContext) -> MyPlugin:
     return MyPlugin()
 
-COMMANDS = []                         # 可选，见第 6 节
+COMMANDS = []                         # 可选，见第 7 节
+TOOLS = []                            # 可选，model-facing 工具，见 6.1
 router = APIRouter()                  # 可选，挂在 /plugins/<id>/ 下
 ```
 
@@ -232,6 +239,61 @@ async def settings_fields(self, ctx, fields):
 **故意给得少**。插件想做别的事，说明那个能力该做成机器人核心功能，而不是每个插件
 自己去摸内部。
 
+### 6.1 工具（model-facing tools，api=2）
+
+命令是给用户输入的；**工具是给模型选的**。插件导出 `TOOLS`（或重写 `tools()`），
+宿主把 schema 交给模型，模型返回 `tool_calls` 后由宿主执行并把结果回填。
+
+```python
+from app.sdk import Extension, Tool, ToolContext
+
+
+async def append_note(ctx: ToolContext, args: dict) -> dict:
+    path = ctx.data_dir / "notes" / args["name"]
+    if path.suffix != ".md":
+        raise ValueError("只允许 .md")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(args["text"], encoding="utf-8")
+    return {"path": str(path)}
+
+
+class Notes(Extension):
+    name = "notes"
+
+    def tools(self):
+        return [
+            Tool(
+                name="notes_append",
+                description="把一段 Markdown 追加到 bot 的笔记里。",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "text": {"type": "string"},
+                    },
+                    "required": ["name", "text"],
+                },
+                handler=append_note,
+            )
+        ]
+```
+
+约定：
+
+- 工具名 `[A-Za-z0-9_]`，全局唯一；冲突时后加载的跳过并记日志。
+- `ToolContext`：`plugin` / `session_key` / `is_group` / `is_admin` / `trigger`
+  （`chat` / `autonomy`）/ `data_dir` / `log`。
+- `is_group` 只是元数据（审计/语义），**不要**用它决定是否暴露工具或写权限；
+  工具对所有会话一致。
+- handler 返回可 JSON 序列化的结果；异常、超时、结果过大都由宿主转成 `ok: false`
+  或截断结果，不打断聊天。
+- 工具对话只在本次请求里；**不写持久历史**，只落最终 assistant 回复。
+- 单轮最多 3 次工具执行，工具超时 10 秒；第一期工具循环只走非流式。
+- 工具对所有会话暴露，不按群聊/私聊分流；手记是 bot 的一份，群聊和私聊共用。
+- 模型是否调用由模型决定；工具描述要写清「什么时候用」，不要靠 system 拼动态内容。
+- 工具名建议带插件前缀（如 `notes_append`），避免和别的插件撞。
+- `api=2` 起支持；`api=1` 的老插件（只有钩子/命令）继续加载。
+
 ---
 
 ## 7. 命令
@@ -276,10 +338,35 @@ COMMANDS = [Command("mycmd", handler=handle, help="说明", admin=True)]
 `class="btn"` + `data-variant="outline|ghost|destructive"` + `data-size="sm|icon"`，
 输入框 `class="input"`、下拉 `class="select"`、文本域 `class="textarea"`、
 开关用 `<input type="checkbox" role="switch" class="input">`，弹窗用原生
-`<dialog class="dialog">`。主题跟着 `data-theme` 走。
+`<dialog class="modal">`。主题跟着 `data-theme` 走。
+
+主面板的下拉框是 `uiSelect`（`ui.js` 里的全局函数），不是原生 `<select>`：浮层、勾选、
+键盘和深色都是自己画的。插件页想要同一套交互，引 `/static/ui.js` 后用
+`uiSelect({ items, value, ... })` 替换原生控件；只引 CSS 的话，原生 `<select>` 仍是
+Basecoat 的 `.select` 外观，跟主面板的下拉不完全一样。
 
 这些是主程序的静态资源，跨大版本可能调整；插件要绝对独立就自己写样式。
 面板里想直接跳去自己的设置：链 `/?plugin=<id>#plugins`，会打开那个插件的设置弹窗。
+
+### 8.1 安装 / 文档 / 删除 / 重载
+
+主面板的插件页现在可以直接管理插件：
+
+- **文档**：读插件根目录的 `README.md`（大小写不敏感，`readme.markdown` / `.txt` 也行），
+  超过 256KB 截断；弹窗按 Markdown 渲染（标题/列表/表格/代码块），服务端白名单清洗，
+  不加载图片、不执行脚本。
+- **安装 ZIP**：点「安装 ZIP」先开拖放弹窗，把包拖进去或点拖放区选文件。支持两种结构：
+  `<插件id>/plugin.toml`（文件夹布局），或 ZIP 根目录直接放 `plugin.toml`（ZIP 文件名
+  就是插件 id，非法字符转下划线）。拒绝绝对路径、`..`、反斜杠、符号链接、加密包；
+  压缩包 ≤8MB，解压后 ≤64MB；`__MACOSX/`、`.DS_Store` 自动忽略。装完默认**启用**；
+  加载失败会保留在启用列表并显示 `last_error`，方便重载或关掉。
+- **删除**：先卸载，再把插件目录改名成隐藏临时目录清理；可选连
+  `data/plugin_data/<id>/` 一起删。不勾“不可恢复”点不了删除。
+- **重载**：重扫 `plugin.toml`、重跑 `setup()`，会先调 `on_stop()` 并取消 `ctx.spawn()`
+  起的任务；`pages/` 和 `router` 的增删仍要重启进程才彻底生效。
+
+所以插件自己的 `README.md` 最好写清楚设置项和依赖；持久化数据一律放
+`ctx.data_dir`，用户才会被明确告知“删插件时要不要连数据一起删”。
 
 ---
 
@@ -352,7 +439,7 @@ ctx.log.info("注入 %s", "黑话 梁文峰")
 
 - `version` 语义化（SemVer）：数据/接口不兼容升 `x`，加功能升 `y`，修 bug 升 `z`。
 - `api` 是插件接口版本，主程序只加载 `api <= 自己支持的最高版本` 的插件；高了就显示成
-  错误卡，写明「需要更新的机器人」。
+  错误卡，写明「需要更新的机器人」。当前最高 `2`；`api=1` 的旧插件继续兼容，不强制升级。
 - 对新主程序的要求写进 `app_version`（如 `">=0.2"`），不满足只警告、不拦加载。
 - **废弃策略**：`api` 升版后旧接口至少保留一个大版本；删之前先在 `CHANGELOG` 标
   「deprecated」，日志里对调用方打一次 warning。
@@ -389,7 +476,7 @@ strategy:
 - [ ] 停用 → 启用，钩子不重复挂；进程退出没有残留任务
 - [ ] 断网 / 模型挂掉 / 数据库锁住，插件不把主流程拖死
 - [ ] 日志里没有 API key、完整聊天记录
-- [ ] `README` 有用法和截图，`CHANGELOG` 有这一版，`LICENSE` 在
+- [ ] `README` 有用法（Markdown），`CHANGELOG` 有这一版，`LICENSE` 在
 
 ---
 

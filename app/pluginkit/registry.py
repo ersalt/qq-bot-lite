@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import logging
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +22,7 @@ from .plugin_log import make_plugin_logger
 from .settings_store import defaults_from
 from .settings_store import load as load_settings
 from .settings_store import save as save_settings
+from .tools import TOOL_NAME_LIMIT, Tool, ToolEntry
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +64,10 @@ class Extension:
 
     async def after_reply(self, ctx: HookContext, text: str) -> str:
         return text
+
+    def tools(self) -> list[Tool]:
+        """返回这个插件暴露给模型的工具；默认读类属性 TOOLS。"""
+        return list(getattr(self, "TOOLS", []) or [])
 
 
 class ExtensionRegistry:
@@ -151,8 +157,18 @@ class ExtensionRegistry:
             item["loaded"] = any(getattr(ext, "name", None) == name for ext in self.extensions)
             item["last_error"] = self.errors.get(name) or item.get("error")
             item["has_page"] = bool(self.pages.get(name))
+            folder = self.root_of(name) / name
+            try:
+                stat = folder.stat()
+                item["installed_at"] = float(getattr(stat, "st_birthtime", stat.st_ctime))
+                item["updated_at"] = float(stat.st_mtime)
+            except OSError:
+                item["installed_at"] = 0.0
+                item["updated_at"] = 0.0
             items.append(item)
-        items.sort(key=lambda item: (not item["enabled"], item["title"].lower()))
+        # 默认顺序必须稳定：不能按 enabled 排，否则安装/停用别的插件时，
+        # 列表里已有插件的位置会跟着跳。面板自己的排序在前端做。
+        items.sort(key=lambda item: (item["title"].lower(), item["name"]))
         return items
 
     # ---------- 加载 ----------
@@ -174,6 +190,8 @@ class ExtensionRegistry:
             log.error("插件 %s 无法加载: %s", name, manifest.error)
             self.errors[name] = manifest.error
             return
+        if manifest.warning:
+            log.warning("插件 %s: %s", name, manifest.warning)
         path = entry_path(root, name, manifest.entry)
         try:
             # 让入口所在目录变成包的搜索路径，插件就能 from .core import xxx
@@ -260,12 +278,51 @@ class ExtensionRegistry:
                 await extension.ctx.shutdown()
         self.extensions.clear()
 
+    async def unload(self, name: str) -> None:
+        """停掉一个插件：on_stop → 取消它的后台任务 → 摘掉钩子/路由/命令/模块缓存。
+
+        不碰别的插件，热重载和删除都走这里。子模块也要一起从 sys.modules 摘掉，
+        否则 `from .core import ...` 会拿到旧代码。
+        """
+        for extension in list(self.extensions):
+            ctx = getattr(extension, "ctx", None)
+            if getattr(ctx, "name", None) != name:
+                continue
+            await self._lifecycle(extension, "on_stop", name)
+            if ctx is not None:
+                await ctx.shutdown()
+            self.extensions.remove(extension)
+
+        self.routers.pop(name, None)
+        self.pages.pop(name, None)
+        self.commands = {
+            alias: entry for alias, entry in self.commands.items() if entry[0] != name
+        }
+        self.errors.pop(name, None)
+
+        prefix = f"qqbotlite_plugin_{name}"
+        for module_name in [
+            module for module in sys.modules if module == prefix or module.startswith(prefix + ".")
+        ]:
+            sys.modules.pop(module_name, None)
+
+    async def reload(self, name: str) -> None:
+        """重载单个插件：重扫清单，再按启用状态重新加载。router 变更仍需重启。"""
+        await self.unload(name)
+        self.scan()
+        if name in self.enabled:
+            await self._load_one(name)
+
     async def set_enabled(self, name: str, enabled: bool) -> None:
         if enabled and name not in self.enabled:
             self.enabled.append(name)
         elif not enabled and name in self.enabled:
             self.enabled.remove(name)
-        await self.load()
+        # 只动这一个插件：别的插件和它们的后台任务不受影响
+        await self.unload(name)
+        self.scan()
+        if enabled:
+            await self._load_one(name)
 
     def update_settings(self, name: str, values: dict[str, Any]) -> dict[str, Any]:
         manifest = self.manifests.get(name) or read_manifest(self.root_of(name), name)
@@ -279,6 +336,47 @@ class ExtensionRegistry:
 
     def find_command(self, name: str) -> tuple[str, Any] | None:
         return self.commands.get(name)
+
+    def collect_tools(self) -> dict[str, ToolEntry]:
+        """收集所有已加载插件暴露的工具，按工具名去重。"""
+        entries: dict[str, ToolEntry] = {}
+        for extension in self.extensions:
+            ctx = getattr(extension, "ctx", None)
+            if ctx is None:
+                continue
+            try:
+                tools = extension.tools()
+            except Exception:  # noqa: BLE001
+                log.exception("插件 %s tools() 异常", getattr(extension, "name", "?"))
+                continue
+            if not isinstance(tools, (list, tuple)):
+                log.error("插件 %s tools() 必须返回列表", getattr(extension, "name", "?"))
+                continue
+            for tool in tools:
+                if not isinstance(tool, Tool):
+                    log.error("插件 %s 返回了非 Tool 对象: %r", getattr(extension, "name", "?"), tool)
+                    continue
+                name = str(tool.name or "").strip()
+                if not re.fullmatch(rf"[A-Za-z0-9_]{{1,{TOOL_NAME_LIMIT}}}", name):
+                    log.error("插件 %s 工具名不合法: %r", getattr(extension, "name", "?"), tool.name)
+                    continue
+                if not callable(tool.handler) or not isinstance(tool.parameters, dict):
+                    log.error("插件 %s 工具 %s 定义不完整", getattr(extension, "name", "?"), name)
+                    continue
+                if name in entries:
+                    log.error(
+                        "工具名冲突: %s 同时来自插件 %s 和 %s，后一个被忽略",
+                        name,
+                        entries[name].plugin,
+                        getattr(ctx, "name", "?"),
+                    )
+                    continue
+                entries[name] = ToolEntry(
+                    tool=tool,
+                    plugin=getattr(ctx, "name", "") or getattr(extension, "name", ""),
+                    plugin_ctx=ctx,
+                )
+        return entries
 
     def _mark_error(self, name: str, exc: Exception) -> None:
         """记下第一次出错，面板上能看见。"""

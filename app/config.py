@@ -72,7 +72,9 @@ class LLMConfig:
 
 @dataclass(slots=True)
 class ContextConfig:
-    max_messages: int = 100
+    # 40 条“接过的消息”约等于 20 轮问答，和 AstrBot 的量级一致。
+    # 再长思考量会上去，模型也容易把注意力散在旧话题上。
+    max_messages: int = 40
     max_tokens: int = 6000
     include_bot_replies: bool = True
     merge_same_role: bool = True

@@ -18,6 +18,7 @@ from fastapi.responses import Response, StreamingResponse
 from websockets.asyncio.client import connect
 
 from app.config import Config
+from app.context.store import MessageStore
 from app.main import build_app
 
 TOKEN = "test-token"
@@ -130,7 +131,11 @@ async def collect_actions(ws, timeout: float = 3.0) -> list[dict]:
                 if asked == "4242"
                 else [{"type": "text", "data": {"text": "之前说过的话"}}]
             )
-            data = {"message_id": payload["params"].get("message_id"), "message": segments}
+            data = {
+                "message_id": payload["params"].get("message_id"),
+                "sender": {"card": "阿伟", "nickname": "阿伟"},
+                "message": segments,
+            }
         elif action.startswith("send_"):
             actions.append(payload)
             data = {"message_id": 5000 + len(actions)}
@@ -178,7 +183,64 @@ async def test_quote_reply_without_at_triggers(tmp_path: Path) -> None:
     assert actions, "引用机器人的消息应该触发回复"
     assert len(state.requests) == 2
     sent = json.dumps(state.requests[1]["messages"], ensure_ascii=False)
-    assert "引用了你之前说的话" in sent
+    assert "<Quoted Message>" in sent
+    assert "之前说过的话" in sent
+
+
+@pytest.mark.asyncio
+async def test_reply_links_to_trigger_and_history_shows_addressee(tmp_path: Path) -> None:
+    """机器人回复要记住“在回谁”，历史里也要显示，避免多人插话后算错人。"""
+    state = FakeState()
+    llm_port, app_port = free_port(), free_port()
+    cfg = Config()
+    cfg.server.port = app_port
+    cfg.llm.base_url = f"http://127.0.0.1:{llm_port}/v1"
+    cfg.llm.model = "fake-model"
+    cfg.onebot.access_token = TOKEN
+    cfg.reply.segment_interval = 0.0
+    db_path = tmp_path / "link.db"
+
+    llm_server = await start_server(make_fake_llm(state), llm_port)
+    bot_server = await start_server(build_app(cfg, db_path=db_path), app_port)
+    try:
+        async with connect(
+            f"ws://127.0.0.1:{app_port}/onebot/v11/ws",
+            additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as ws:
+            await ws.send(json.dumps(group_event(3001, "第一句")))
+            await collect_actions(ws)
+
+            # 两个用户之间插一句闲话，再 @ 它；这句应该进 ambient，而不是持久历史
+            chatter = group_event(3002, "插话")
+            chatter["user_id"] = 999999
+            chatter["sender"] = {"user_id": 999999, "nickname": "路人", "card": "路人"}
+            chatter["message"] = [{"type": "text", "data": {"text": "插话"}}]
+            await ws.send(json.dumps(chatter))
+            await asyncio.sleep(0.3)
+
+            await ws.send(json.dumps(group_event(3003, "第二句")))
+            await collect_actions(ws)
+    finally:
+        bot_server.should_exit = True
+        llm_server.should_exit = True
+        await asyncio.sleep(0.2)
+
+    sent = json.dumps(state.requests[1]["messages"], ensure_ascii=False)
+    assert "「阿伟」:" in sent
+    body = [item for item in state.requests[1]["messages"] if item["role"] != "system"]
+    assert all("（回" not in str(item.get("content", "")) for item in body)
+    assert "<system_reminder>" in sent
+    assert "「路人」: 插话" in sent
+
+    store = MessageStore(db_path)
+    try:
+        messages = store.latest_after(f"group:{GROUP_ID}", 0, 20)
+        assistant = next(message for message in reversed(messages) if message.role == "assistant")
+        trigger = next(message for message in messages if message.id == assistant.reply_to)
+        assert trigger.role == "user"
+        assert "第二句" in trigger.content
+    finally:
+        store.close()
 
 
 @pytest.mark.asyncio

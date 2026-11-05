@@ -1,0 +1,9 @@
+# ruff：只开能抓 bug 的规则，风格问题不吵人（行长 120）
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "W", "F", "B", "I"]
+
+[lint.isort]
+known-first-party = ["core", "tests"]

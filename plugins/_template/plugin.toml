@@ -4,7 +4,7 @@ version = "0.1.0"
 author = "贰叔"
 
 # 插件接口版本：跟着主程序走，别乱填大的
-api = 1
+api = 2
 # 入口文件，默认 plugin.py
 entry = "plugin.py"
 # 有 pages/index.html 才写这一行，值就是面板地址

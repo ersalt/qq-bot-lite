@@ -73,8 +73,19 @@ def _base_type(tp: Any) -> Any:
     return tp
 
 
+def _display_value(field: dict[str, Any], value: Any) -> Any:
+    """把落盘单位换算成界面单位（目前只有 images.max_bytes 的字节→KB）。"""
+    scale = field.get("scale")
+    if not scale or isinstance(value, bool):
+        return value
+    try:
+        return round(value / scale, 2)
+    except (TypeError, ValueError, ZeroDivisionError):
+        return value
+
+
 def collect_values(cfg: Config) -> dict[str, Any]:
-    """按 schema 的 key 取出当前值，扁平化。"""
+    """按 schema 的 key 取出当前值，扁平化；有 scale 的字段换算成显示单位。"""
     from .schema import SECTIONS
 
     out: dict[str, Any] = {}
@@ -84,7 +95,7 @@ def collect_values(cfg: Config) -> dict[str, Any]:
         for field in section["fields"]:
             key = field["key"]
             attr = key.split(".", 1)[1]
-            out[key] = getattr(holder, attr)
+            out[key] = _display_value(field, getattr(holder, attr))
     return out
 
 
@@ -149,13 +160,26 @@ def normalize(updates: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, s
         if key not in limits:
             continue
         field = limits[key]
+        scale = field.get("scale")
         try:
-            value = _coerce(key, raw)
+            if scale:
+                # 界面按 scale 单位（如 KB）提交；先按显示单位校验，再换算成落盘单位。
+                number = 0.0 if raw is None or raw == "" else float(raw)
+                low, high = field.get("min"), field.get("max")
+                if low is not None and number < low:
+                    errors.append({"field": key, "message": f"{labels[key]}：不能小于 {low}"})
+                    continue
+                if high is not None and number > high:
+                    errors.append({"field": key, "message": f"{labels[key]}：不能大于 {high}"})
+                    continue
+                value = _coerce(key, number * scale)
+            else:
+                value = _coerce(key, raw)
         except (TypeError, ValueError):
             errors.append({"field": key, "message": f"{labels[key]}：值不是合法数字"})
             continue
 
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if not scale and isinstance(value, (int, float)) and not isinstance(value, bool):
             low, high = field.get("min"), field.get("max")
             if low is not None and value < low:
                 errors.append({"field": key, "message": f"{labels[key]}：不能小于 {low}"})

@@ -189,11 +189,11 @@ SECTIONS: list[dict[str, Any]] = [
         "fields": [
             _f(
                 "context.max_messages",
-                "最近消息条数",
+                "接过的消息条数",
                 "number",
                 min=10,
                 max=500,
-                help="锚点窗口会把它浮动在 60%~125% 之间，不是每条都挪",
+                help="只算它接过的轮次；锚点窗口在 100%~125% 之间浮动，40 条约 20 轮",
             ),
             _f(
                 "context.max_tokens",
@@ -295,12 +295,13 @@ SECTIONS: list[dict[str, Any]] = [
             _f("images.max_per_message", "单条最多几张", "number", min=1, max=9),
             _f(
                 "images.max_bytes",
-                "单张大小上限（字节）",
+                "单张大小上限（KB）",
                 "number",
-                min=100_000,
-                max=100_000_000,
-                step=1_000_000,
-                help="QQ 原图常见 5~10MB，别设太小",
+                min=100,
+                max=102_400,
+                step=1,
+                scale=1024,
+                help="QQ 原图常见 5~10MB（5120~10240KB）；这里按 KB 填，1MB = 1024KB",
             ),
             _f(
                 "images.max_side",
@@ -333,6 +334,38 @@ SECTIONS: list[dict[str, Any]] = [
 ]
 
 
+# 只保留“看标签还不够”的一行短提示；长解释统一去「文档」页签。
+# 不要恢复成每个字段都塞一段 help。
+_HINTS = {
+    "server.host": "一般保持 127.0.0.1",
+    "server.status_interval": "0 = 关闭",
+    "onebot.access_token": "与 SnowLuma 保持一致",
+    "llm.api_key": "LM Studio 不校验，随便填",
+    "llm.model": "必须与已加载模型一致",
+    "llm.max_context": "0 = 不限制",
+    "llm.temperature": "留空 = 用模型默认",
+    "llm.top_p": "留空 = 用模型默认",
+    "llm.max_tokens": "0 = 不发送；太小会没正文",
+    "llm.reasoning_effort": "留空 = 用模型默认",
+    "llm.stream": "关掉 = 整段生成后发送",
+    "llm.thinking_budget": "0 = 关闭；仅流式有效",
+    "llm.max_concurrency": "对应 LM Studio 的并发槽位",
+    "context.max_messages": "40 ≈ 20 轮；软上限",
+    "context.max_tokens": "超了从最旧丢",
+    "context.only_addressed": "群里闲话不进历史",
+    "persona.nickname": "拿不到群名片时用",
+    "trigger.group_prefix": "例如 /；留空关闭",
+    "trigger.group_keywords": "逗号分隔",
+    "trigger.cooldown": "0 = 不冷却",
+    "reply.at_sender": "每条都 @ 会刷屏",
+    "reply.segment_interval": "0 = 连发",
+    "reply.dedupe_window": "0 = 不去重",
+    "images.max_bytes": "1MB = 1024KB",
+    "images.max_side": "带字截图建议 768 以上",
+    "images.history_images": "0 = 只处理当前图",
+    "images.trust_env": "图床需要代理时打开",
+}
+
 # 模型那组字段分两档：基础在前，进阶隔一个空行。其余组一律 basic。
 _ADVANCED_KEYS = {
     "llm.temperature",
@@ -349,4 +382,6 @@ _ADVANCED_KEYS = {
 for _section in SECTIONS:
     for _field in _section["fields"]:
         _field["group"] = "advanced" if _field["key"] in _ADVANCED_KEYS else "basic"
+        if _field["key"] in _HINTS:
+            _field["hint"] = _HINTS[_field["key"]]
 

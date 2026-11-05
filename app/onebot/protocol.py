@@ -51,6 +51,10 @@ class ParsedContent:
     images: list[ImageRef] = field(default_factory=list)
     at_targets: list[str] = field(default_factory=list)
     reply_to: str | None = None
+    # 被引用消息的展示信息，由 get_msg 补齐（可能为空）
+    quoted_sender: str | None = None
+    quoted_text: str | None = None
+    quoted_has_image: bool = False
     has_face: bool = False
     # 整条消息只有 @、没有别的内容（“只 @ 了一下”）
     only_mentions: bool = False

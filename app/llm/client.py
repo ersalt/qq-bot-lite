@@ -119,18 +119,24 @@ class LLMClient:
             payload.setdefault("stream_options", {"include_usage": True})
         return payload
 
-    async def complete(
+    async def complete_message(
         self,
         messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
         override: dict[str, Any] | None = None,
         timeout: float | None = None,
-    ) -> str:
-        """一次非流式请求。
+    ) -> dict[str, Any]:
+        """一次非流式请求，返回完整的 assistant message。
 
-        timeout 只影响这一次请求：后台整理语料这类活允许等更久，
-        聊天回复还是按配置的 120 秒来。
+        和 complete() 的区别：这里保留 tool_calls / reasoning_content，工具循环需要完整
+        消息；普通聊天仍走 complete()，行为不变。
         """
         payload = self._payload(messages, stream=False, override=override)
+        # complete_message 的语义就是非流式；override 里就算写了 stream 也不放行。
+        payload["stream"] = False
+        if tools:
+            payload["tools"] = tools
+            payload.setdefault("tool_choice", "auto")
         kwargs: dict[str, Any] = {}
         if timeout:
             kwargs["timeout"] = httpx.Timeout(connect=10.0, read=timeout, write=30.0, pool=10.0)
@@ -143,10 +149,24 @@ class LLMClient:
         data = resp.json()
         self.last_usage = data.get("usage")
         try:
-            self.last_finish_reason = data["choices"][0].get("finish_reason")
-            return str(data["choices"][0]["message"]["content"] or "")
-        except (KeyError, IndexError) as exc:
+            choice = data["choices"][0]
+            self.last_finish_reason = choice.get("finish_reason")
+            message = choice["message"]
+        except (KeyError, IndexError, TypeError) as exc:
             raise LLMError(f"模型返回结构异常: {json.dumps(data, ensure_ascii=False)[:500]}") from exc
+        if not isinstance(message, dict):
+            raise LLMError("模型返回的 message 不是对象")
+        return message
+
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        override: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> str:
+        """一次非流式请求，只要正文（保持原有调用方不变）。"""
+        message = await self.complete_message(messages, override=override, timeout=timeout)
+        return str(message.get("content") or "")
 
     async def stream(
         self,

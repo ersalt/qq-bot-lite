@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS messages (
     content     TEXT    NOT NULL DEFAULT '',
     images      TEXT    NOT NULL DEFAULT '',
     has_image   INTEGER NOT NULL DEFAULT 0,
+    reply_to    INTEGER,
     created_at  REAL    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session, id);
@@ -55,6 +56,8 @@ class StoredMessage:
     created_at: float
     # 这张消息带的图，存的是 data/images/ 下的本地副本路径
     images: list[str] = field(default_factory=list)
+    # assistant 消息对应的触发 user 消息 id；老数据为 None
+    reply_to: int | None = None
 
 
 class MessageStore:
@@ -76,6 +79,9 @@ class MessageStore:
         if "images" not in columns:
             self._conn.execute("ALTER TABLE messages ADD COLUMN images TEXT NOT NULL DEFAULT ''")
             log.info("数据库补上 messages.images 列")
+        if "reply_to" not in columns:
+            self._conn.execute("ALTER TABLE messages ADD COLUMN reply_to INTEGER")
+            log.info("数据库补上 messages.reply_to 列")
 
     def close(self) -> None:
         with self._lock:
@@ -94,13 +100,14 @@ class MessageStore:
         message_id: str | None = None,
         has_image: bool = False,
         images: list[str] | None = None,
+        reply_to: int | None = None,
     ) -> int:
         now = time.time()
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO messages (session, role, speaker, user_id, message_id, content, has_image, "
-                "images, created_at)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
+                "images, reply_to, created_at)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     session,
                     role,
@@ -110,6 +117,7 @@ class MessageStore:
                     content,
                     int(has_image),
                     json.dumps(images or [], ensure_ascii=False),
+                    reply_to,
                     now,
                 ),
             )
@@ -181,6 +189,21 @@ class MessageStore:
             ).fetchall()
         return [_row_to_message(row) for row in rows]
 
+    def latest_after(self, session: str, after_id: int, limit: int) -> list[StoredMessage]:
+        """取 id > after_id 的**最新** N 条，旧→新返回。
+
+        `after()` 是最早优先；历史超过 limit 时它会停在旧消息上，最新的几条根本进不了
+        窗口。锚点窗口必须用这个，否则模型永远慢几十条（实测落后 431 条）。
+        """
+        if limit <= 0:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM messages WHERE session=? AND id>? ORDER BY id DESC LIMIT ?",
+                (session, after_id, limit),
+            ).fetchall()
+        return [_row_to_message(row) for row in reversed(rows)]
+
     def count(self, session: str | None = None) -> int:
         with self._lock:
             if session is None:
@@ -188,6 +211,15 @@ class MessageStore:
             else:
                 row = self._conn.execute("SELECT COUNT(*) AS n FROM messages WHERE session=?", (session,)).fetchone()
         return int(row["n"])
+
+    def last_role_id(self, session: str, role: str = "assistant") -> int:
+        """该会话最后一条指定角色的消息 id；没有返回 0。用于圈 ambient 起点。"""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT id FROM messages WHERE session=? AND role=? ORDER BY id DESC LIMIT 1",
+                (session, role),
+            ).fetchone()
+        return int(row["id"]) if row else 0
 
     def stats(self) -> dict[str, int]:
         with self._lock:
@@ -212,6 +244,7 @@ def _row_to_message(row: sqlite3.Row) -> StoredMessage:
         has_image=bool(row["has_image"]),
         created_at=float(row["created_at"]),
         images=images,
+        reply_to=row["reply_to"] if "reply_to" in row.keys() else None,
     )
 
 

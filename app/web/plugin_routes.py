@@ -3,17 +3,39 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..config import Config
+from ..pluginkit.archive import MAX_ZIP, InstallError, install_zip
 from ..pluginkit.manifest import read_manifest
 from ..pluginkit.registry import ExtensionRegistry
 from ..pluginkit.settings_store import defaults_from
+from .markdown_render import render_markdown
 
 log = logging.getLogger(__name__)
+
+# README 只做展示，不执行、不渲染；超过这个大小截断，避免把几 MB 的文档塞进页面。
+README_LIMIT = 256 * 1024
+_README_NAMES = ("readme.md", "readme.markdown", "readme.txt")
+
+
+def _find_readme(folder: Path) -> Path | None:
+    """在插件根目录找 README，大小写不敏感；不递归。"""
+    try:
+        entries = list(folder.iterdir())
+    except OSError:
+        return None
+    files = {item.name.lower(): item for item in entries if item.is_file()}
+    for name in _README_NAMES:
+        if name in files:
+            return files[name]
+    return None
 
 
 def mount_plugin_routers(app: FastAPI, registry: ExtensionRegistry) -> None:
@@ -68,6 +90,86 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
     async def list_plugins() -> JSONResponse:
         return JSONResponse({"plugins": registry.list_plugins(), "enabled": list(registry.enabled)})
 
+    @app.post("/api/plugins/install")
+    async def install_plugin(request: Request, name: str | None = None) -> JSONResponse:
+        """手动安装插件 ZIP。支持 <id>/plugin.toml 或根目录 plugin.toml（name 作 id）。"""
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and int(length) > MAX_ZIP:
+            return JSONResponse(
+                {"ok": False, "message": f"ZIP 超过 {MAX_ZIP // 1048576}MB 上限"}, status_code=413
+            )
+        data = await request.body()
+        try:
+            plugin_id = install_zip(data, registry.plugin_dir, name_hint=name)
+        except InstallError as exc:
+            return JSONResponse({"ok": False, "message": str(exc)}, status_code=exc.status)
+        registry.scan()
+        manifest = registry.manifests.get(plugin_id)
+        if manifest is None:
+            return JSONResponse({"ok": False, "message": "安装后没有找到插件清单"}, status_code=500)
+        if manifest.error:
+            log.info("插件已安装但清单无效: %s", plugin_id)
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "plugins": registry.list_plugins(),
+                    "message": f"已安装「{manifest.display}」，但清单无效：{manifest.error}",
+                }
+            )
+
+        # 新装插件默认启用：装完就能用，不用再让用户绕到卡片上找开关。
+        await registry.set_enabled(plugin_id, True)
+        save_enabled(list(registry.enabled))
+        mount_plugin_routers(app, registry)
+        error = registry.errors.get(plugin_id)
+        if error:
+            message = f"已安装「{manifest.display}」并加入启用列表，但加载失败：{error}"
+            log.warning("插件已安装但加载失败: %s: %s", plugin_id, error)
+        else:
+            message = f"已安装并启用「{manifest.display}」"
+            log.info("插件已安装并启用: %s", plugin_id)
+        return JSONResponse(
+            {
+                "ok": True,
+                "plugins": registry.list_plugins(),
+                "message": message,
+            }
+        )
+
+    @app.get("/api/plugins/{name}/readme")
+    async def plugin_readme(name: str) -> JSONResponse:
+        """插件 README 原文。只读文本，前端用 textContent 展示。"""
+        if not registry.manifests:
+            registry.scan()
+        if name not in registry.manifests:
+            raise HTTPException(status_code=404, detail="插件不存在")
+        folder = registry.root_of(name) / name
+        path = _find_readme(folder)
+        if path is None:
+            return JSONResponse(
+                {"ok": False, "message": "这个插件没有 README"}, status_code=404
+            )
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            return JSONResponse({"ok": False, "message": f"读取失败：{exc}"}, status_code=500)
+        text = raw[:README_LIMIT].decode("utf-8", errors="replace").lstrip("\ufeff")
+        try:
+            html = render_markdown(text)
+        except Exception:  # noqa: BLE001 - 渲染失败退回纯文本，不能拖垮面板
+            log.exception("README 渲染失败: %s", name)
+            html = ""
+        return JSONResponse(
+            {
+                "ok": True,
+                "name": name,
+                "filename": path.name,
+                "text": text,
+                "html": html,
+                "truncated": len(raw) > README_LIMIT,
+            }
+        )
+
     @app.post("/api/plugins/{name}/enabled")
     async def toggle(name: str, request: Request) -> JSONResponse:
         try:
@@ -89,6 +191,110 @@ def mount_plugin_api(app: FastAPI, cfg: Config, registry: ExtensionRegistry, sav
                 "plugins": registry.list_plugins(),
                 "restart": False,
                 "message": f"{manifest.display} 已{'启用' if enabled else '停用'}",
+            }
+        )
+
+    @app.post("/api/plugins/{name}/reload")
+    async def reload_plugin(name: str) -> JSONResponse:
+        """重载单个插件的代码与设置。router 的增删仍要重启进程。"""
+        if not registry.manifests:
+            registry.scan()
+        if name not in registry.manifests:
+            raise HTTPException(status_code=404, detail="插件不存在")
+        try:
+            await registry.reload(name)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("插件重载失败: %s", name)
+            return JSONResponse({"ok": False, "message": f"重载失败：{exc}"}, status_code=500)
+        mount_plugin_routers(app, registry)
+        manifest = registry.manifests.get(name)
+        error = registry.errors.get(name) or (manifest.error if manifest else None)
+        title = manifest.display if manifest else name
+        if error:
+            message = f"已重载「{title}」，但加载失败：{error}"
+        else:
+            message = f"已重载「{title}」；如果改过 router，需要重启进程"
+        log.info("插件重载: %s%s", name, f" 失败: {error}" if error else "")
+        return JSONResponse(
+            {
+                "ok": not error,
+                "plugins": registry.list_plugins(),
+                "restart": False,
+                "message": message,
+            }
+        )
+
+    @app.delete("/api/plugins/{name}")
+    async def delete_plugin(name: str, request: Request) -> JSONResponse:
+        """删除插件目录；可选连持久化数据一起删。
+
+        先把目录改名成隐藏的 .deleting-*（原子消失，discover 会跳过），再清理。
+        这样即使文件被占用，面板上也不会再出现半个插件。
+        """
+        if not registry.manifests:
+            registry.scan()
+        if name not in registry.manifests:
+            raise HTTPException(status_code=404, detail="插件不存在")
+
+        root = registry.root_of(name)
+        folder = (root / name).resolve()
+        try:
+            folder.relative_to(root.resolve())
+        except ValueError:
+            return JSONResponse({"ok": False, "message": "插件目录不在 plugins/ 下"}, status_code=400)
+        if not folder.is_dir():
+            return JSONResponse({"ok": False, "message": "插件目录不存在"}, status_code=404)
+
+        with_data = request.query_params.get("data", "").lower() in {"1", "true", "yes"}
+        had_panel = bool(registry.pages.get(name)) or name in registry.routers
+        await registry.unload(name)
+
+        trash = root / f".deleting-{name}-{int(time.time())}"
+        try:
+            folder.rename(trash)
+        except OSError as exc:
+            # 改名失败：还在 enabled 里，重新加载把它恢复回去
+            log.exception("删除插件失败（改名）: %s", name)
+            await registry.reload(name)
+            return JSONResponse({"ok": False, "message": f"删除失败：{exc}"}, status_code=500)
+
+        if name in registry.enabled:
+            registry.enabled.remove(name)
+            save_enabled(list(registry.enabled))
+        registry.scan()
+
+        warning = ""
+        data_removed = False
+        if with_data:
+            data_dir = registry.plugin_data_dir(name).resolve()
+            try:
+                data_dir.relative_to(registry.data_dir.resolve())
+                if data_dir.exists():
+                    shutil.rmtree(data_dir)
+                data_removed = True
+            except (OSError, ValueError) as exc:
+                log.warning("删除插件数据失败 %s: %s", name, exc)
+                warning = f"插件已删除，但数据目录没删干净：{exc}"
+
+        shutil.rmtree(trash, ignore_errors=True)
+        if trash.exists():
+            log.warning("插件临时目录没删干净: %s", trash)
+            warning = f"{warning} 临时文件残留：{trash}".strip()
+
+        if with_data and data_removed:
+            message = f"已删除「{name}」和它的持久化数据"
+        else:
+            message = f"已删除「{name}」，持久化数据保留在 data/plugin_data/{name}/"
+        if had_panel:
+            message += "；面板路由要重启进程才彻底消失"
+        log.info("插件已删除: %s（数据=%s）", name, "删除" if with_data else "保留")
+        return JSONResponse(
+            {
+                "ok": True,
+                "plugins": registry.list_plugins(),
+                "message": message,
+                "data_removed": data_removed,
+                "warning": warning,
             }
         )
 
