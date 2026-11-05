@@ -107,8 +107,7 @@ function buildRow(field, value) {
   if (field.restart) head.append(el("span", "tag", "需重启"));
   row.append(head);
 
-  if (field.help) row.append(el("p", "hint", field.help));
-
+  // 详细说明统一放在本地文档（/manual），设置行只保留标签和控件。
   const ctl = el("div", "row-ctl");
   let control;
 

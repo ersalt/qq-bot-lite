@@ -906,7 +906,7 @@ function buildDialogField(field, value, host) {
     read = () => (field.type === "number" ? Number(input.value) : input.value);
   }
 
-  if (field.help) wrap.append(el("p", "hint", field.help));
+  // 插件设置也把说明交给插件文档，弹窗只留标签和控件。
   host.append(wrap);
   return read;
 }
