@@ -1,9 +1,8 @@
 """模型配置管理：多套配置分开存，切换时写回 [llm]。
 
-- `config/models.toml` 存所有模型连接/采样配置（一个 `[[profile]]` 一张卡）
+- `config/models.toml` 存所有配置（一个 `[[profile]]` 一张卡）
 - `config/config.toml` 的 `[llm]` 始终是**当前生效**的那套
-- 切换 = 把卡里的连接/采样值抄进 [llm] + 热应用 + 重建 http 客户端
-- `max_concurrency` 是宿主全局资源设置，不属于模型卡，切换时保持不变
+- 切换 = 把卡里的值抄进 [llm] + 热应用 + 重建 http 客户端，不用重启
 """
 
 from __future__ import annotations
@@ -34,6 +33,7 @@ FIELDS = (
     "stream",
     "thinking_budget",
     "timeout",
+    "max_concurrency",
     "presence_penalty",
     "frequency_penalty",
 )
@@ -144,7 +144,7 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
             value = profile[key]
             if key in ("temperature", "top_p"):
                 value = float(value)
-            elif key in ("max_tokens", "thinking_budget", "timeout", "max_context"):
+            elif key in ("max_tokens", "thinking_budget", "timeout", "max_concurrency", "max_context"):
                 value = int(value)
             elif key in ("presence_penalty", "frequency_penalty"):
                 value = float(value)
