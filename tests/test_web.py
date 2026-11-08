@@ -202,8 +202,14 @@ def test_persona_manage_and_edit(tmp_path: Path) -> None:
         activated = client.post("/api/personas/active", json={"name": "测试人设"})
         assert activated.status_code == 200, activated.text
         assert activated.json()["active"] == "测试人设"
+        assert activated.json()["nickname"] == "测试人设"
+
+        renamed = client.post("/api/personas/nickname", json={"nickname": "小测试"})
+        assert renamed.status_code == 200, renamed.text
+        assert renamed.json()["nickname"] == "小测试"
 
         before = client.get("/api/persona").json()
+        assert before["nickname"] == "小测试"
         assert "人设名" not in before["text"]
         assert "测试人设" in before["text"]
 
@@ -218,6 +224,12 @@ def test_persona_manage_and_edit(tmp_path: Path) -> None:
         blocked = client.request("DELETE", "/api/personas/测试人设")
         assert blocked.status_code == 400
 
+        switched = client.post("/api/personas/active", json={"name": listing["active"]})
+        assert switched.status_code == 200
+        assert switched.json()["nickname"] != "小测试"
+        back = client.post("/api/personas/active", json={"name": "测试人设"})
+        assert back.status_code == 200
+        assert back.json()["nickname"] == "小测试"
         switched = client.post("/api/personas/active", json={"name": listing["active"]})
         assert switched.status_code == 200
         removed = client.request("DELETE", "/api/personas/测试人设")
@@ -243,6 +255,43 @@ def test_model_profiles_activate_and_delete(tmp_path: Path) -> None:
         # 正在用的配置不能删
         blocked = client.post("/api/models", json={"action": "delete", "name": "备用"})
         assert blocked.status_code == 400
+
+
+def test_model_switch_replaces_every_llm_field(tmp_path: Path) -> None:
+    client, config_path = _client(tmp_path)
+    with client:
+        saved = client.post(
+            "/api/config",
+            json={"updates": {"llm.temperature": 0.5, "llm.max_concurrency": 1}},
+        )
+        assert saved.status_code == 200, saved.text
+
+        created = client.post("/api/models", json={"action": "create", "name": "干净卡"})
+        assert created.status_code == 200, created.text
+        activated = client.post("/api/models", json={"action": "activate", "name": "干净卡"})
+        assert activated.status_code == 200, activated.text
+
+    text = config_path.read_text(encoding="utf-8")
+    assert "temperature = 0.5" not in text
+    assert "max_concurrency = 1" not in text
+    assert "max_concurrency = 4" in text
+
+
+def test_editing_one_model_card_does_not_change_another(tmp_path: Path) -> None:
+    client, config_path = _client(tmp_path)
+    with client:
+        for name in ("A", "B"):
+            created = client.post("/api/models", json={"action": "create", "name": name})
+            assert created.status_code == 200, created.text
+
+        client.post("/api/models", json={"action": "activate", "name": "A"})
+        assert client.post("/api/config", json={"updates": {"llm.model": "A-model"}}).status_code == 200
+        assert client.post("/api/models", json={"action": "save"}).status_code == 200
+        client.post("/api/models", json={"action": "activate", "name": "B"})
+
+        cards = client.get("/api/models").json()["items"]
+        assert next(item for item in cards if item["name"] == "A")["model"] == "A-model"
+        assert next(item for item in cards if item["name"] == "B")["model"] != "A-model"
 
 
 def test_llm_check_reports_failure_gracefully(tmp_path: Path) -> None:

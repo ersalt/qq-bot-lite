@@ -66,8 +66,19 @@ def _read(path: Path) -> list[dict[str, Any]]:
 TEMPLATE_NAME = "default"
 
 
+def _defaults() -> dict[str, Any]:
+    """每张卡都必须能独立落地的字段；缺字段时用 LLMConfig 默认值补齐。"""
+    default = LLMConfig()
+    return {
+        key: getattr(default, key)
+        for key in FIELDS
+        if getattr(default, key) is not None
+    }
+
+
 def _write(path: Path, profiles: list[dict[str, Any]]) -> None:
     lines = ["# 模型配置。每张 [[profile]] 是一套完整参数，切换时会抄进 config.toml 的 [llm]。"]
+    defaults = _defaults()
     for profile in profiles:
         lines.append("")
         lines.append("[[profile]]")
@@ -75,8 +86,9 @@ def _write(path: Path, profiles: list[dict[str, Any]]) -> None:
         if profile.get("template"):
             lines.append("template = true")
         for key in FIELDS:
-            if key in profile and profile[key] is not None:
-                lines.append(f"{key} = {_fmt(profile[key])}")
+            value = profile.get(key, defaults.get(key))
+            if value is not None:
+                lines.append(f"{key} = {_fmt(value)}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -116,12 +128,12 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
     template()  # 启动时就把隐藏模板补上，新建时才有东西可抄
 
     def items() -> list[dict[str, Any]]:
-        current = _snapshot(cfg.llm)
+        defaults = _defaults()
         result = []
         for profile in _read(path):
             if profile.get("template"):
                 continue  # 模板只在后台用，不出现在列表里
-            merged = {**current, **profile}
+            merged = {**defaults, **profile}
             result.append(
                 {
                     "name": profile["name"],
@@ -137,11 +149,15 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
         _write(path, profiles)
 
     def apply(profile: dict[str, Any]) -> None:
+        defaults = _defaults()
         updates = {}
+        # 关键：缺字段也要显式回到默认值，不能保留上一张卡的值。
         for key in FIELDS:
-            if key not in profile:
+            value = profile.get(key, defaults.get(key))
+            if value is None:
+                setattr(cfg.llm, key, None)
+                updates[f"llm.{key}"] = None
                 continue
-            value = profile[key]
             if key in ("temperature", "top_p"):
                 value = float(value)
             elif key in ("max_tokens", "thinking_budget", "timeout", "max_concurrency", "max_context"):

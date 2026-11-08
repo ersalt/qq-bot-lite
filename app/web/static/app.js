@@ -308,7 +308,7 @@ function showSection(id) {
 
   const actions = $("actions");
   // 人设页保留配置级保存（兜底昵称在配置里），正文另有自己的「保存人设」
-  if (actions) actions.hidden = target === "plugins" || target === "documents" || target === "about";
+  if (actions) actions.hidden = target === "plugins" || target === "persona" || target === "documents" || target === "about";
 
   try {
     localStorage.setItem("qqbotlite-section", target);
@@ -513,7 +513,15 @@ async function save() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "save" }),
-      }).catch(() => {});
+      })
+        .then((response) => response.json())
+        .then((models) => {
+          if (!models.ok) return;
+          MODELS.items = models.items || MODELS.items;
+          MODELS.active = models.active || MODELS.active;
+          paintModels();
+        })
+        .catch(() => {});
     }
 
     // 不整页重渲染：人设正文是独立编辑区，重渲染会吞掉没保存的草稿

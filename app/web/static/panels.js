@@ -336,14 +336,6 @@ function personaPanel(section) {
   wrap.append(listCard);
   makeSortable(cards);
 
-  const nicknameRow = el("div", "rows");
-  for (const field of section.fields) nicknameRow.append(buildRow(field, state.values[field.key]));
-  const nickCard = el("section", "card");
-  const nickPad = el("div", "card-pad");
-  nickPad.append(nicknameRow);
-  nickCard.append(nickPad);
-  wrap.append(nickCard);
-
   const editorCard = el("section", "card");
   const editorHead = cardHead("人设正文", null);
   const path = el("span", "aside mono");
@@ -352,6 +344,21 @@ function personaPanel(section) {
   editorCard.append(editorHead);
 
   const editorPad = el("div", "card-pad");
+  const nickRow = el("div", "row");
+  const nickHead = el("div", "row-head");
+  const nickLabel = document.createElement("label");
+  nickLabel.htmlFor = "persona-nickname";
+  nickLabel.textContent = "兜底昵称";
+  nickHead.append(nickLabel, el("span", "hint", "拿不到群名片时用这个名字，跟随当前人设"));
+  const nickCtl = el("div", "row-ctl");
+  const nicknameInput = document.createElement("input");
+  nicknameInput.className = "input";
+  nicknameInput.id = "persona-nickname";
+  nicknameInput.placeholder = "例如 小鲸鱼";
+  nickCtl.append(nicknameInput);
+  nickRow.append(nickHead, nickCtl);
+  editorPad.append(nickRow);
+
   const editor = el("div", "editor");
   const area = document.createElement("textarea");
   area.className = "textarea";
@@ -375,13 +382,13 @@ function personaPanel(section) {
     counter.textContent = `${area.value.length} 字`;
   };
   area.addEventListener("input", updateCounter);
-  save.addEventListener("click", () => savePersona(area.value, updateCounter));
+  save.addEventListener("click", () => savePersona(area.value, nicknameInput.value, updateCounter));
 
-  setTimeout(() => loadPersonas(area, path, updateCounter), 0);
+  setTimeout(() => loadPersonas(area, path, nicknameInput, updateCounter), 0);
   return wrap;
 }
 
-async function loadPersonas(area, path, updateCounter) {
+async function loadPersonas(area, path, nicknameInput, updateCounter) {
   try {
     const response = await fetch("/api/personas");
     const data = await response.json();
@@ -396,6 +403,7 @@ async function loadPersonas(area, path, updateCounter) {
     const data = await response.json();
     if (area) area.value = data.text || "";
     if (path) path.textContent = data.path || "";
+    if (nicknameInput) nicknameInput.value = data.nickname || "";
     if (updateCounter) updateCounter();
   } catch (error) {
     toast(`读取人设失败：${error.message}`, "bad");
@@ -418,7 +426,7 @@ function paintPersonas(from = null) {
     frag.append(
       entityCard({
         title: item.name,
-        meta: `${item.chars} 字`,
+        meta: `${item.chars} 字 · 兜底 ${item.nickname || item.name}`,
         active: item.active,
         badge: "使用中",
         onActivate: () => activatePersona(item.name),
@@ -452,6 +460,8 @@ async function activatePersona(name) {
     PERSONAS.active = data.active;
     const area = $("persona-text");
     if (area && typeof data.text === "string") area.value = data.text;
+    const nicknameInput = $("persona-nickname");
+    if (nicknameInput && typeof data.nickname === "string") nicknameInput.value = data.nickname;
     const counter = $("persona-count");
     if (counter && area) counter.textContent = `${area.value.length} 字`;
     paintPersonas(from);
@@ -518,7 +528,7 @@ async function deletePersona(name) {
   }
 }
 
-async function savePersona(text, updateCounter) {
+async function savePersona(text, nickname, updateCounter) {
   try {
     const response = await fetch("/api/persona", {
       method: "POST",
@@ -530,6 +540,18 @@ async function savePersona(text, updateCounter) {
       toast(data.message || "保存失败", "bad");
       return;
     }
+    const nickResponse = await fetch("/api/personas/nickname", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname }),
+    });
+    const nickData = await nickResponse.json();
+    if (!nickResponse.ok || !nickData.ok) {
+      toast(nickData.message || "兜底昵称保存失败", "bad");
+      return;
+    }
+    PERSONAS.items = nickData.items || PERSONAS.items;
+    paintPersonas();
     if (updateCounter) updateCounter();
     toast(`人设已保存（${data.chars} 字）`);
   } catch (error) {

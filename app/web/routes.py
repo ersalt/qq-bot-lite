@@ -141,7 +141,14 @@ def mount_web(
     async def read_persona() -> JSONResponse:
         path = cfg.persona_path
         text = path.read_text(encoding="utf-8") if path.exists() else ""
-        return JSONResponse({"path": str(path), "text": text, "chars": len(text)})
+        return JSONResponse(
+            {
+                "path": str(path),
+                "text": text,
+                "chars": len(text),
+                "nickname": cfg.persona.nickname,
+            }
+        )
 
     @app.post("/api/persona")
     async def write_persona(request: Request) -> JSONResponse:
