@@ -78,7 +78,6 @@ def _defaults() -> dict[str, Any]:
 
 def _write(path: Path, profiles: list[dict[str, Any]]) -> None:
     lines = ["# 模型配置。每张 [[profile]] 是一套完整参数，切换时会抄进 config.toml 的 [llm]。"]
-    defaults = _defaults()
     for profile in profiles:
         lines.append("")
         lines.append("[[profile]]")
@@ -86,7 +85,7 @@ def _write(path: Path, profiles: list[dict[str, Any]]) -> None:
         if profile.get("template"):
             lines.append("template = true")
         for key in FIELDS:
-            value = profile.get(key, defaults.get(key))
+            value = profile.get(key)
             if value is not None:
                 lines.append(f"{key} = {_fmt(value)}")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -114,6 +113,21 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
             save_to_toml(config_path, {"llm.profile": seed_name})
         except OSError:
             log.warning("写回 llm.profile 失败", exc_info=True)
+
+    def normalize_existing() -> None:
+        """一次性补齐旧卡片缺失的字段，之后保存单卡不会重写别的卡。"""
+        defaults = _defaults()
+        profiles = _read(path)
+        changed = False
+        for profile in profiles:
+            for key, value in defaults.items():
+                if key not in profile:
+                    profile[key] = value
+                    changed = True
+        if changed:
+            _write(path, profiles)
+
+    normalize_existing()
 
     def template() -> dict[str, Any]:
         """隐藏的模板：新建配置照它抄，界面上不出现、也不能选中或删除。"""
