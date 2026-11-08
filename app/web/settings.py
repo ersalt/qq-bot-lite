@@ -219,6 +219,19 @@ def _set_line(text: str, section: str, name: str, value: Any) -> str:
     active = re.compile(rf"^(\s*){re.escape(name)}\s*=")
     commented = re.compile(rf"^(\s*)#\s*{re.escape(name)}\s*=(.*)$")
 
+    if value is None:
+        # None 表示这个可选项不发送；直接移除该行，不能写成 "None"。
+        current: str | None = None
+        for index, line in enumerate(lines):
+            match = _SECTION_RE.match(line)
+            if match:
+                current = match.group(1).strip()
+                continue
+            if current == section and active.match(line):
+                del lines[index]
+                break
+        return "\n".join(lines) + "\n"
+
     current: str | None = None
     section_found = False
     section_end = 0

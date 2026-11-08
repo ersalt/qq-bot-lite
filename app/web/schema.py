@@ -219,9 +219,7 @@ SECTIONS: list[dict[str, Any]] = [
         "id": "persona",
         "title": "人设",
         "desc": "人设文件是纯 Markdown，改完即时生效，不用重启。",
-        "fields": [
-            _f("persona.nickname", "兜底昵称", help="拿不到群名片时用这个名字"),
-        ],
+        "fields": [],
     },
     {
         "id": "trigger",
@@ -353,7 +351,6 @@ _HINTS = {
     "context.max_messages": "40 ≈ 20 轮；软上限",
     "context.max_tokens": "超了从最旧丢",
     "context.only_addressed": "群里闲话不进历史",
-    "persona.nickname": "拿不到群名片时用",
     "trigger.group_prefix": "例如 /；留空关闭",
     "trigger.group_keywords": "逗号分隔",
     "trigger.cooldown": "0 = 不冷却",
