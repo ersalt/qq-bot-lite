@@ -245,6 +245,21 @@ def test_model_profiles_activate_and_delete(tmp_path: Path) -> None:
         assert blocked.status_code == 400
 
 
+def test_switching_model_keeps_global_concurrency(tmp_path: Path) -> None:
+    client, config_path = _client(tmp_path)
+    with client:
+        saved = client.post("/api/config", json={"updates": {"llm.max_concurrency": 1}})
+        assert saved.status_code == 200, saved.text
+
+        created = client.post("/api/models", json={"action": "create", "name": "另一个模型"})
+        assert created.status_code == 200, created.text
+        activated = client.post("/api/models", json={"action": "activate", "name": "另一个模型"})
+        assert activated.status_code == 200, activated.text
+
+    text = config_path.read_text(encoding="utf-8")
+    assert "max_concurrency = 1" in text
+
+
 def test_llm_check_reports_failure_gracefully(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     with client:
@@ -745,8 +760,10 @@ def test_model_template_is_hidden_and_copied(tmp_path: Path) -> None:
     blocks = text.split("[[profile]]")
     template_block = next(block for block in blocks if "template = true" in block)
     copy_block = next(block for block in blocks if 'name = "抄模板"' in block)
-    for line in ("model =", "base_url =", "max_concurrency ="):
+    for line in ("model =", "base_url =", "timeout ="):
         assert line in template_block and line in copy_block
+    assert "max_concurrency =" not in template_block
+    assert "max_concurrency =" not in copy_block
 
 
 def test_persona_template_is_hidden_and_copied(tmp_path: Path) -> None:

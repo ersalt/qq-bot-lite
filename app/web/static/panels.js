@@ -36,6 +36,13 @@ function modelPanel(section) {
   const list = el("div", "entities");
   list.id = "model-list";
   pad.append(list);
+  pad.append(
+    el(
+      "p",
+      "hint",
+      "切换配置会替换接口地址、Key、模型和采样参数；并发请求上限是全局设置，不随切换改变。",
+    ),
+  );
 
   const addRow = el("div", "add-row");
   const input = document.createElement("input");

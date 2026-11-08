@@ -117,7 +117,7 @@ model = "qwen3.8-27b"
 | `stream` | 默认 `false`。一条回复本来就只有几秒，非流式更省心；打开后首字更早，但工具调用仍走非流式 |
 | `max_tokens` | `0` = 不发送，让模型自己收尾；设太小会把思考吃光，正文变空 |
 | `reasoning_effort` | 留空用模型模板默认；`none` 更快但活人感会下降 |
-| `max_concurrency` | LM Studio 的并行槽位数。默认 4；多个群同时聊会互相抢显存和缓存，单群体验最好 |
+| `max_concurrency` | 全局资源设置，不随模型配置切换。默认 1；多个群同时聊会互相抢显存和缓存，单群体验最好 |
 | `max_context` | 软件侧硬上限；`0` = 不额外限制，靠 `[context] max_tokens` 控制历史 |
 
 ## 6. WebUI

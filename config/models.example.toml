@@ -1,4 +1,4 @@
-# 模型配置。每张 [[profile]] 是一套完整参数，切换时会抄进 config.toml 的 [llm]。
+# 模型配置。每张 [[profile]] 是一套模型连接/采样参数，切换时抄进 [llm]；max_concurrency 是全局资源设置，不随切换改变。
 
 [[profile]]
 name = "default"
@@ -12,7 +12,6 @@ reasoning_effort = ""
 stream = false
 thinking_budget = 0
 timeout = 120
-max_concurrency = 4
 presence_penalty = 0.0
 frequency_penalty = 0.0
 
@@ -27,6 +26,5 @@ reasoning_effort = ""
 stream = false
 thinking_budget = 0
 timeout = 120.0
-max_concurrency = 4
 presence_penalty = 0.0
 frequency_penalty = 0.0
