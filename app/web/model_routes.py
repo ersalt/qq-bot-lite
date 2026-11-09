@@ -1,8 +1,8 @@
-"""模型配置管理：多套配置分开存，切换时写回 [llm]。
+"""模型配置管理：多套配置分开存，切换时写回 [llm] 和上下文预算。
 
 - `config/models.toml` 存所有配置（一个 `[[profile]]` 一张卡）
-- `config/config.toml` 的 `[llm]` 始终是**当前生效**的那套
-- 切换 = 把卡里的值抄进 [llm] + 热应用 + 重建 http 客户端，不用重启
+- `config/config.toml` 的 `[llm]` 和 `context.max_messages/max_tokens` 始终是当前卡生效值
+- 切换 = 把卡里的模型参数和上下文预算抄进 config + 热应用 + 重建 http 客户端
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from ..config import Config, LLMConfig
+from ..config import Config, ContextConfig, LLMConfig
 from ..llm.client import LLMClient
 from .settings import save_to_toml
 
@@ -37,6 +37,15 @@ FIELDS = (
     "presence_penalty",
     "frequency_penalty",
 )
+
+# 这两项属于“当前模型能看多少历史”，跟模型一起切；models.toml 里用
+# context_max_* 避免和 llm.max_tokens 重名。
+CONTEXT_FIELDS = ("context.max_messages", "context.max_tokens")
+CONTEXT_SERIAL = {
+    "context.max_messages": "context_max_messages",
+    "context.max_tokens": "context_max_tokens",
+}
+ALL_PROFILE_KEYS = (*FIELDS, *CONTEXT_SERIAL.values())
 
 
 def _fmt(value: Any) -> str:
@@ -67,13 +76,17 @@ TEMPLATE_NAME = "default"
 
 
 def _defaults() -> dict[str, Any]:
-    """每张卡都必须能独立落地的字段；缺字段时用 LLMConfig 默认值补齐。"""
-    default = LLMConfig()
-    return {
-        key: getattr(default, key)
+    """每张卡都必须能独立落地的字段；缺字段时用 dataclass 默认值补齐。"""
+    llm_default = LLMConfig()
+    context_default = ContextConfig()
+    data = {
+        key: getattr(llm_default, key)
         for key in FIELDS
-        if getattr(default, key) is not None
+        if getattr(llm_default, key) is not None
     }
+    data[CONTEXT_SERIAL["context.max_messages"]] = context_default.max_messages
+    data[CONTEXT_SERIAL["context.max_tokens"]] = context_default.max_tokens
+    return data
 
 
 def _write(path: Path, profiles: list[dict[str, Any]]) -> None:
@@ -88,16 +101,24 @@ def _write(path: Path, profiles: list[dict[str, Any]]) -> None:
             value = profile.get(key)
             if value is not None:
                 lines.append(f"{key} = {_fmt(value)}")
+        for key in CONTEXT_FIELDS:
+            # snapshot/前端用 context.max_messages，落盘用 context_max_messages；
+            # 两种都接受，旧卡和新卡都能读。
+            value = profile.get(CONTEXT_SERIAL[key], profile.get(key))
+            if value is not None:
+                lines.append(f"{CONTEXT_SERIAL[key]} = {_fmt(value)}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _snapshot(cfg: LLMConfig) -> dict[str, Any]:
+def _snapshot(cfg: Config) -> dict[str, Any]:
     data: dict[str, Any] = {}
     for key in FIELDS:
-        value = getattr(cfg, key, None)
+        value = getattr(cfg.llm, key, None)
         if value is not None:
             data[key] = value
+    data["context.max_messages"] = cfg.context.max_messages
+    data["context.max_tokens"] = cfg.context.max_tokens
     return data
 
 
@@ -107,7 +128,7 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
     if not path.exists():
         # 第一次跑：把当前 [llm] 存成一张卡，侧栏不至于空着。
         seed_name = "默认"
-        _write(path, [{"name": seed_name, **_snapshot(cfg.llm)}])
+        _write(path, [{"name": seed_name, **_snapshot(cfg)}])
         cfg.llm.profile = seed_name
         try:
             save_to_toml(config_path, {"llm.profile": seed_name})
@@ -135,7 +156,7 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
         found = next((item for item in profiles if item.get("template")), None)
         if found is not None:
             return found
-        seed = {"name": TEMPLATE_NAME, "template": True, **_snapshot(cfg.llm)}
+        seed = {"name": TEMPLATE_NAME, "template": True, **_snapshot(cfg)}
         _write(path, [seed, *profiles])
         return seed
 
@@ -182,6 +203,13 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
                 value = bool(value)
             setattr(cfg.llm, key, value)
             updates[f"llm.{key}"] = value
+        for key in CONTEXT_FIELDS:
+            serial = CONTEXT_SERIAL[key]
+            value = profile.get(serial, profile.get(key, defaults.get(serial)))
+            if value is not None:
+                value = int(value)
+            setattr(cfg.context, key.split(".", 1)[1], value)
+            updates[key] = value
         cfg.llm.profile = str(profile["name"])
         updates["llm.profile"] = str(profile["name"])
         save_to_toml(config_path, updates)
@@ -189,7 +217,7 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
     @app.get("/api/models")
     async def list_models() -> JSONResponse:
         return JSONResponse(
-            {"items": items(), "active": getattr(cfg.llm, "profile", ""), "values": _snapshot(cfg.llm)}
+            {"items": items(), "active": getattr(cfg.llm, "profile", ""), "values": _snapshot(cfg)}
         )
 
     @app.post("/api/models")
@@ -212,7 +240,7 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
             apply(profile)
             await llm.reload()
             log.info("切换模型配置: %s", name)
-            return JSONResponse({"ok": True, "items": items(), "active": name, "values": _snapshot(cfg.llm)})
+            return JSONResponse({"ok": True, "items": items(), "active": name, "values": _snapshot(cfg)})
 
         if action == "create":
             if not name:
@@ -220,7 +248,11 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
             if name in names:
                 return JSONResponse({"ok": False, "message": "同名配置已存在"}, status_code=400)
             # 新配置照隐藏模板抄，不是抄当前正在用的那套。
-            base = {key: value for key, value in template().items() if key in FIELDS}
+            base = {
+                key: value
+                for key, value in template().items()
+                if key in ALL_PROFILE_KEYS or key in CONTEXT_FIELDS
+            }
             profiles.append({"name": name, **base})
             save_all(profiles)
             return JSONResponse({"ok": True, "items": items(), "active": getattr(cfg.llm, "profile", "")})
@@ -264,10 +296,10 @@ def mount_model_api(app: FastAPI, cfg: Config, llm: LLMClient, config_path: Path
                 return JSONResponse({"ok": False, "message": "当前没有生效的配置"}, status_code=400)
             for index, item in enumerate(profiles):
                 if item["name"] == current:
-                    profiles[index] = {"name": current, **_snapshot(cfg.llm)}
+                    profiles[index] = {"name": current, **_snapshot(cfg)}
                     break
             else:
-                profiles.append({"name": current, **_snapshot(cfg.llm)})
+                profiles.append({"name": current, **_snapshot(cfg)})
             save_all(profiles)
             return JSONResponse({"ok": True, "items": items()})
 

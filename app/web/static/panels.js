@@ -212,7 +212,8 @@ async function activateModel(name) {
       for (const [key, value] of Object.entries(data.values)) {
         // /api/models 返回的是裸字段名（base_url/model/...），
         // 页面 state 用的是 llm.base_url/llm.model，必须补前缀才能同步控件。
-        const stateKey = key.startsWith("llm.") ? key : `llm.${key}`;
+        const stateKey =
+          key.startsWith("llm.") || key.startsWith("context.") ? key : `llm.${key}`;
         if (stateKey in state.values) state.values[stateKey] = value;
       }
       state.original = { ...state.values };

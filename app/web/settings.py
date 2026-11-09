@@ -90,11 +90,10 @@ def collect_values(cfg: Config) -> dict[str, Any]:
 
     out: dict[str, Any] = {}
     for section in SECTIONS:
-        name = section["id"]
-        holder = _section_of(cfg, name)
         for field in section["fields"]:
             key = field["key"]
-            attr = key.split(".", 1)[1]
+            name, attr = key.split(".", 1)
+            holder = _section_of(cfg, name)
             out[key] = _display_value(field, getattr(holder, attr))
     return out
 
