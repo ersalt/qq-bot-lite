@@ -12,7 +12,7 @@ rem A venv copied from another computer can point at a missing interpreter.
 if errorlevel 1 goto recreate
 
 rem The venv exists but may be missing runtime packages (copied/incomplete).
-"%PY%" -c "import uvicorn" >nul 2>&1
+"%PY%" -c "import fastapi, uvicorn, websockets, httpx, PIL, markdown, nh3" >nul 2>&1
 if errorlevel 1 goto deps
 
 goto run

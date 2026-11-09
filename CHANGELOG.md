@@ -3,6 +3,16 @@
 版本号唯一来源是根目录的 `VERSION` 文件；本文件只写标题，不重复定义版本值。
 对比基线是**上一个已发布 tag**；首个版本没有基线。
 
+## v0.3.5 — 2026-11-09
+
+> 以下变更以 `v0.3.4` 为基线。
+
+### 修复
+
+- `requirements.txt` 不再使用 `uvicorn[standard]`，改为基础 `uvicorn` + 单独的 `websockets`；
+  避免新 Python 没有 PyYAML 轮子时触发 MSVC 编译。
+- `start.cmd` 的依赖检查覆盖 FastAPI、uvicorn、websockets、httpx、Pillow、Markdown、nh3。
+
 ## v0.3.4 — 2026-11-09
 
 > 以下变更以 `v0.3.3` 为基线。

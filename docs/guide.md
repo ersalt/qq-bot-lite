@@ -28,7 +28,7 @@ QQ ↔ SnowLuma ↔ qq-bot-lite（8790） ↔ LM Studio（1234）
 ## 2. 准备
 
 - Windows 10/11（当前主要开发和验证环境）。
-- Python 3.12+；项目自带 `.venv` 启动脚本会自动创建。
+- Python 3.12+（推荐 3.12/3.13）；项目自带 `.venv` 启动脚本会自动创建。
 - SnowLuma，或兼容 OneBot 11 的 QQ 端。
 - LM Studio，已下载一个能用的模型（当前默认 `qwen3.8-27b`）。
 - 本机端口：`8790`（qq-bot-lite）、`1234`（LM Studio，可改）。
@@ -303,6 +303,24 @@ python -m venv .venv
 ```
 
 如果只有 `py` 启动器，用 `py -3.12 -m venv .venv` 代替 `python -m venv .venv`。
+
+
+
+### 安装依赖时 PyYAML 报 Microsoft Visual C++ 14.0
+
+旧版 `requirements.txt` 用了 `uvicorn[standard]`，会拉取 PyYAML；较新的 Python 没有 PyYAML 预编译轮子时，pip 会尝试本地编译并要求 MSVC。
+
+v0.3.5 起已改为基础 `uvicorn` + 单独的 `websockets`，不会自动安装 PyYAML。更新项目后重新执行：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+如果仍在旧版本，先不要用 `uvicorn[standard]`，直接安装基础包：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install "uvicorn>=0.32,<1.0" "websockets>=13,<18"
+```
 
 ---
 
