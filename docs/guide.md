@@ -43,6 +43,7 @@ QQ ↔ SnowLuma ↔ qq-bot-lite（8790） ↔ LM Studio（1234）
    - 创建 `.venv` 并安装 `requirements.txt`；
    - 从 `config/config.example.toml` 复制出 `config/config.toml`；
    - 启动 FastAPI，监听 `127.0.0.1:8790`。
+   如果 `.venv` 是从旧电脑拷来的，启动脚本会检测解释器和 `uvicorn`，自动重建或补装依赖。
 4. 浏览器打开 <http://127.0.0.1:8790/>。
 
 停止：关控制台窗口，或按 `Ctrl+C`。需要远程/脚本停服时：
@@ -289,6 +290,21 @@ bot 的私人 Markdown 手记，全局一份，不分群聊私聊：
 
 可以。QQ、SnowLuma、LM Studio、本项目全在本机；文档也在仓库和本地面板里。
 
+### `ModuleNotFoundError: No module named 'uvicorn'`
+
+通常是 `.venv` 从旧电脑拷过来，或者上次依赖没装完整。最快处理：
+
+```powershell
+cd /d "你的项目目录"
+rmdir /s /q .venv
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\start.cmd
+```
+
+如果只有 `py` 启动器，用 `py -3.12 -m venv .venv` 代替 `python -m venv .venv`。
+
 ---
 
 需要改代码或写插件？继续看[开发文档](development.md)。
+
