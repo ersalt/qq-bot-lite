@@ -122,9 +122,10 @@ def mount_web(
         # 写完再读一遍，把 toml 里真实的落盘结果回给前端（类型、空值都以文件为准）。
         fresh = load_config(config_path)
         for section in SECTIONS:
-            name = section["id"]
             for field in section["fields"]:
-                attr = field["key"].split(".", 1)[1]
+                # 字段可以挂在别的页签下（例如上下文预算放在模型卡里），
+                # 回写时以 key 的段名为准，不能按当前页签 id 猜。
+                name, attr = field["key"].split(".", 1)
                 setattr(getattr(cfg, name), attr, getattr(getattr(fresh, name), attr))
 
         log.info("配置已保存：%s", ", ".join(sorted(clean)))

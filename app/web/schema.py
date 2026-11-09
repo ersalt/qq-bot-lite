@@ -94,6 +94,23 @@ SECTIONS: list[dict[str, Any]] = [
                 help="0 = 不限制。填了就按它的 50% 当 prompt 预算，prompt 撑不到别处去",
             ),
             _f(
+                "context.max_messages",
+                "接过的消息条数",
+                "number",
+                min=10,
+                max=500,
+                help="跟随模型配置；40 条约 20 轮，越小越不容易被历史带偏",
+            ),
+            _f(
+                "context.max_tokens",
+                "token 预算",
+                "number",
+                min=256,
+                max=60000,
+                optional_zero=True,
+                help="跟随模型配置；估算值，超了一次退到 60%",
+            ),
+            _f(
                 "llm.temperature",
                 "temperature",
                 "number",
@@ -185,25 +202,8 @@ SECTIONS: list[dict[str, Any]] = [
     {
         "id": "context",
         "title": "上下文",
-        "desc": "送进模型的历史怎么攒。条数和 token 双闸，超了从最旧的丢。",
+        "desc": "送进模型的历史怎么攒。条数和 token 预算已跟随模型卡。",
         "fields": [
-            _f(
-                "context.max_messages",
-                "接过的消息条数",
-                "number",
-                min=10,
-                max=500,
-                help="只算它接过的轮次；锚点窗口在 100%~125% 之间浮动，40 条约 20 轮",
-            ),
-            _f(
-                "context.max_tokens",
-                "token 预算",
-                "number",
-                min=256,
-                max=60000,
-                optional_zero=True,
-                help="估算值。超了一次退到 60%，避免前缀每轮位移",
-            ),
             _f(
                 "context.only_addressed",
                 "只记被接过的轮次",

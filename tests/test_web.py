@@ -277,6 +277,37 @@ def test_model_switch_replaces_every_llm_field(tmp_path: Path) -> None:
     assert "max_concurrency = 4" in text
 
 
+def test_model_profiles_carry_context_budget(tmp_path: Path) -> None:
+    client, config_path = _client(tmp_path)
+    with client:
+        saved = client.post(
+            "/api/config",
+            json={"updates": {"context.max_messages": 60, "context.max_tokens": 5000}},
+        )
+        assert saved.status_code == 200, saved.text
+        assert client.post("/api/models", json={"action": "save"}).status_code == 200
+
+        values = client.get("/api/models").json()["values"]
+        assert values["context.max_messages"] == 60
+        assert values["context.max_tokens"] == 5000
+
+        created = client.post("/api/models", json={"action": "create", "name": "短上下文"})
+        assert created.status_code == 200, created.text
+        client.post("/api/models", json={"action": "activate", "name": "短上下文"})
+        text = config_path.read_text(encoding="utf-8")
+        assert "max_messages = 100" in text
+        assert "max_tokens = 6000" in text
+
+        client.post("/api/models", json={"action": "activate", "name": "默认"})
+        text = config_path.read_text(encoding="utf-8")
+        assert "max_messages = 60" in text
+        assert "max_tokens = 5000" in text
+
+    models = (tmp_path / "models.toml").read_text(encoding="utf-8")
+    assert "context_max_messages = 60" in models
+    assert "context_max_tokens = 5000" in models
+
+
 def test_editing_one_model_card_does_not_change_another(tmp_path: Path) -> None:
     client, config_path = _client(tmp_path)
     with client:

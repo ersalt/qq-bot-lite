@@ -13,7 +13,7 @@
 ```
 D:\Dev\qq-bot-lite       本仓库（Python 3.12，venv 在 .venv）
 GitHub: ersalt/qq-bot-lite
-  main     已发布（v0.3.2）
+  main     已发布（v0.3.3）
   develop  开发主线（领先 main 的提交数按 git 实际为准）
 ```
 
@@ -144,11 +144,11 @@ D:\Dev\
 历史工作区 `D:\Dev\bot-workspace` 已于 2026-11-04 归档到 `_archive\bot-workspace-legacy\`
 （含 git bundle 和全部文件）。那里面是 AstrBot 时代的知识库和排查手册，**不适用于本项目**。
 
-## 当前状态（2026-11-08）
+## 当前状态（2026-11-09）
 
-- `v0.3.2` 已发布（2026-11-08）：模型卡独立完整参数、卡片切换字段同步、人设兜底昵称跟随卡片；
-  内置鲸语汇 `0.6.0`、鲸鱼空间 `0.5.5`。上一个正式版 `v0.3.1`：
-  https://github.com/ersalt/qq-bot-lite/releases/tag/v0.3.1
+- `v0.3.3` 已发布（2026-11-09）：上下文条数/token 预算跟随模型卡、模型页同步上下文字段、
+  提示词增加不复读约束；内置鲸语汇 `0.6.0`、鲸鱼空间 `0.5.5`。上一个正式版 `v0.3.2`：
+  https://github.com/ersalt/qq-bot-lite/releases/tag/v0.3.2
 - 面板：顶栏 + 页头 + 页内页签 + 白卡行式；页签最后是「文档」「关于」；
   设置小字只保留必要短 hint，配置 key 标签已移除；弹窗有打开/退场动画。
 - 文档：guide / settings / development / api / plugin-integration 入口；
