@@ -26,7 +26,8 @@ QQ ↔ SnowLuma ↔ qq-bot-lite(8790) ↔ LM Studio(1234)
 ## 快速开始
 
 双击 `启动.cmd`（`start.cmd` 是同一入口）。首次启动会自动创建 `.venv`、安装依赖，并从
-`config/config.example.toml` 复制出 `config/config.toml`。
+`config/config.example.toml` 复制出 `config/config.toml`。如果 `.venv` 是从旧电脑拷过来的，
+启动脚本会发现解释器/依赖不可用并自动重建或补装。
 
 - 设置页：<http://127.0.0.1:8790/>
 - 健康检查：<http://127.0.0.1:8790/healthz>
