@@ -1,6 +1,9 @@
-# qq-bot-lite 运行依赖（Python 3.12+，当前机器 3.13.5）
+# qq-bot-lite 运行依赖（推荐 Python 3.12/3.13；3.14+ 需确认依赖有轮子）
 fastapi>=0.115,<1.0
-uvicorn[standard]>=0.32,<1.0
+uvicorn>=0.32,<1.0
+# 只用基础 uvicorn；standard 额外装 PyYAML，新 Python 没有预编译轮子时会要求 MSVC。
+# 本项目 websocket 入口需要 websockets 包，单独列出。
+websockets>=13.0,<18.0
 httpx>=0.27,<1.0
 Pillow>=11.0,<13.0
 # 插件 README 的 Markdown 渲染与白名单清洗（本地执行，不请求外部图片）
