@@ -329,7 +329,7 @@ def test_context_sessions_can_be_cleared_individually(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     with client:
         store = client.app.state.store
-        store.add("group:111", "user", "旧聊天", speaker="甲", message_id="m1")
+        store.add("group:111", "user", "旧聊天", speaker="甲", message_id="m1", session_name="测试群")
         store.add("group:111", "assistant", "旧回复", speaker="小鲸鱼", reply_to=1)
         store.add("group:222", "user", "另一个群", speaker="乙", message_id="m2")
 
@@ -337,6 +337,7 @@ def test_context_sessions_can_be_cleared_individually(tmp_path: Path) -> None:
         assert listing.status_code == 200, listing.text
         items = listing.json()["items"]
         assert {item["key"] for item in items} == {"group:111", "group:222"}
+        assert next(item for item in items if item["key"] == "group:111")["name"] == "测试群"
 
         cleared = client.post("/api/context/clear", json={"session": "group:111"})
         assert cleared.status_code == 200, cleared.text

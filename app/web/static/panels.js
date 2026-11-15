@@ -828,7 +828,7 @@ function contextClearPanel(section) {
     label: "选择要清理的会话",
     placeholder: "选择要清理的会话…",
     searchPlaceholder: "搜索群号 / QQ号…",
-    menuWidth: 440,
+    menuWidth: 360,
     items: [],
   });
   ctl.append(picker);
@@ -861,12 +861,18 @@ function contextClearPanel(section) {
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.message || "读取失败");
       state.items = data.items || [];
-      const options = state.items.map((item) => ({
-        value: item.key,
-        label: `${item.kind === "group" ? "群聊" : "私聊"} ${item.target_id}`,
-        hint: `${item.messages} 条 · ${formatContextTime(item.updated_at)}`,
-        icon: item.kind === "group" ? "群" : "私",
-      }));
+      const options = state.items.map((item) => {
+        const kind = item.kind === "group" ? "群聊" : "私聊";
+        const nickname =
+          item.name || (item.kind === "private" ? item.last_speaker : "") || "未命名";
+        return {
+          value: item.key,
+          label: `${kind}-${nickname}`,
+          suffix: `[${item.target_id}]`,
+          hint: `${item.messages} 条 · ${formatContextTime(item.updated_at)}`,
+          icon: item.kind === "group" ? "群" : "私",
+        };
+      });
       picker.setItems(options);
       const total = state.items.reduce((sum, item) => sum + item.messages, 0);
       note.textContent = state.items.length

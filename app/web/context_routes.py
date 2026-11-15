@@ -16,7 +16,23 @@ log = logging.getLogger(__name__)
 def mount_context_api(app: FastAPI, store: MessageStore) -> None:
     @app.get("/api/context/sessions")
     async def list_sessions() -> JSONResponse:
-        return JSONResponse({"ok": True, "items": store.list_sessions(), "stats": store.stats()})
+        items = store.list_sessions()
+        # 旧会话没有存过群名；连着 OneBot 时顺手补一次，私聊用最后说话人的昵称。
+        server = getattr(app.state, "server", None)
+        conn = getattr(server, "connection", None)
+        if conn is not None:
+            for item in items:
+                if item["kind"] != "group" or item["name"]:
+                    continue
+                try:
+                    info = await conn.get_group_info(item["target_id"], timeout=1.2)
+                    name = str(info.get("group_name") or "").strip()
+                except Exception:  # noqa: BLE001 - 补名字失败不影响列表
+                    name = ""
+                if name:
+                    store.note_session_name(item["key"], name)
+                    item["name"] = name
+        return JSONResponse({"ok": True, "items": items, "stats": store.stats()})
 
     @app.post("/api/context/clear")
     async def clear_context(request: Request) -> JSONResponse:
