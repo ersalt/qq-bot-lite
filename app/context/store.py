@@ -9,6 +9,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -220,6 +221,44 @@ class MessageStore:
                 (session, role),
             ).fetchone()
         return int(row["id"]) if row else 0
+
+    def list_sessions(self) -> list[dict[str, Any]]:
+        """列出可清理的会话，含消息条数和最后活动时间。"""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT s.key, s.kind, s.target_id, s.updated_at, COUNT(m.id) AS messages "
+                "FROM sessions s LEFT JOIN messages m ON m.session = s.key "
+                "GROUP BY s.key, s.kind, s.target_id, s.updated_at "
+                "ORDER BY s.updated_at DESC"
+            ).fetchall()
+        return [
+            {
+                "key": str(row["key"]),
+                "kind": str(row["kind"]),
+                "target_id": int(row["target_id"]),
+                "messages": int(row["messages"]),
+                "updated_at": float(row["updated_at"]),
+            }
+            for row in rows
+        ]
+
+    def clear_session(self, session: str) -> dict[str, int]:
+        """删除一个会话的聊天记录和去重记录。"""
+        with self._lock:
+            messages = self._conn.execute("DELETE FROM messages WHERE session=?", (session,)).rowcount
+            sent = self._conn.execute("DELETE FROM sent_messages WHERE session=?", (session,)).rowcount
+            sessions = self._conn.execute("DELETE FROM sessions WHERE key=?", (session,)).rowcount
+            self._conn.commit()
+        return {"messages": int(messages), "sent": int(sent), "sessions": int(sessions)}
+
+    def clear_all(self) -> dict[str, int]:
+        """清空全部聊天记录；配置和插件数据不受影响。"""
+        with self._lock:
+            messages = self._conn.execute("DELETE FROM messages").rowcount
+            sent = self._conn.execute("DELETE FROM sent_messages").rowcount
+            sessions = self._conn.execute("DELETE FROM sessions").rowcount
+            self._conn.commit()
+        return {"messages": int(messages), "sent": int(sent), "sessions": int(sessions)}
 
     def stats(self) -> dict[str, int]:
         with self._lock:
