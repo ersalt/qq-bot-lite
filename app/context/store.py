@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     key         TEXT PRIMARY KEY,
     kind        TEXT NOT NULL,
     target_id   INTEGER NOT NULL,
+    name        TEXT NOT NULL DEFAULT '',
     updated_at  REAL NOT NULL
 );
 
@@ -83,6 +84,12 @@ class MessageStore:
         if "reply_to" not in columns:
             self._conn.execute("ALTER TABLE messages ADD COLUMN reply_to INTEGER")
             log.info("数据库补上 messages.reply_to 列")
+        session_columns = {
+            row["name"] for row in self._conn.execute("PRAGMA table_info(sessions)")
+        }
+        if "name" not in session_columns:
+            self._conn.execute("ALTER TABLE sessions ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+            log.info("数据库补上 sessions.name 列")
 
     def close(self) -> None:
         with self._lock:
@@ -102,6 +109,7 @@ class MessageStore:
         has_image: bool = False,
         images: list[str] | None = None,
         reply_to: int | None = None,
+        session_name: str | None = None,
     ) -> int:
         now = time.time()
         with self._lock:
@@ -123,10 +131,14 @@ class MessageStore:
                 ),
             )
             kind, _, target = session.partition(":")
+            display_name = (session_name or "").strip()
+            if display_name == "未知群名":
+                display_name = ""
             self._conn.execute(
-                "INSERT INTO sessions (key, kind, target_id, updated_at) VALUES (?,?,?,?)"
-                " ON CONFLICT(key) DO UPDATE SET updated_at=excluded.updated_at",
-                (session, kind, int(target) if target.isdigit() else 0, now),
+                "INSERT INTO sessions (key, kind, target_id, name, updated_at) VALUES (?,?,?,?,?)"
+                " ON CONFLICT(key) DO UPDATE SET updated_at=excluded.updated_at,"
+                " name=CASE WHEN excluded.name<>'' THEN excluded.name ELSE sessions.name END",
+                (session, kind, int(target) if target.isdigit() else 0, display_name, now),
             )
             self._conn.commit()
             return int(cur.lastrowid)
@@ -226,9 +238,11 @@ class MessageStore:
         """列出可清理的会话，含消息条数和最后活动时间。"""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT s.key, s.kind, s.target_id, s.updated_at, COUNT(m.id) AS messages "
+                "SELECT s.key, s.kind, s.target_id, s.name, s.updated_at, COUNT(m.id) AS messages, "
+                "(SELECT m2.speaker FROM messages m2 WHERE m2.session=s.key AND m2.role='user' "
+                " AND m2.speaker IS NOT NULL AND m2.speaker<>'' ORDER BY m2.id DESC LIMIT 1) AS last_speaker "
                 "FROM sessions s LEFT JOIN messages m ON m.session = s.key "
-                "GROUP BY s.key, s.kind, s.target_id, s.updated_at "
+                "GROUP BY s.key, s.kind, s.target_id, s.name, s.updated_at "
                 "ORDER BY s.updated_at DESC"
             ).fetchall()
         return [
@@ -236,11 +250,22 @@ class MessageStore:
                 "key": str(row["key"]),
                 "kind": str(row["kind"]),
                 "target_id": int(row["target_id"]),
+                "name": str(row["name"] or ""),
+                "last_speaker": str(row["last_speaker"] or ""),
                 "messages": int(row["messages"]),
                 "updated_at": float(row["updated_at"]),
             }
             for row in rows
         ]
+
+    def note_session_name(self, session: str, name: str) -> None:
+        """记录群名/昵称；空名字不覆盖已有值。"""
+        clean = str(name or "").strip()
+        if not clean:
+            return
+        with self._lock:
+            self._conn.execute("UPDATE sessions SET name=? WHERE key=?", (clean, session))
+            self._conn.commit()
 
     def clear_session(self, session: str) -> dict[str, int]:
         """删除一个会话的聊天记录和去重记录。"""

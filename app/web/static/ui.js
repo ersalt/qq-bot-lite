@@ -442,6 +442,7 @@ function uiSearchSelect(options) {
           label: item.label === undefined || item.label === null ? String(item.value ?? "") : String(item.label),
           hint: item.hint ? String(item.hint) : "",
           icon: item.icon ? String(item.icon) : "",
+          suffix: item.suffix ? String(item.suffix) : "",
           disabled: Boolean(item.disabled),
         };
       }
@@ -514,6 +515,7 @@ function uiSearchSelect(options) {
       const icon = uiEl("span", "ui-select-option-icon", item.icon || "");
       icon.setAttribute("aria-hidden", "true");
       node.append(icon, uiEl("span", "ui-select-option-label", item.label));
+      if (item.suffix) node.append(uiEl("span", "ui-select-option-suffix", item.suffix));
       if (item.hint) node.append(uiEl("span", "ui-select-option-hint", item.hint));
       node.append(uiSelectIcon("0 0 14 14", "M3 7.4 5.8 10.2 11 4.4", "ui-select-check", 1.5));
       node.addEventListener("pointermove", () => setActive(index, false));

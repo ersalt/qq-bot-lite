@@ -210,6 +210,7 @@ class ChatService:
             message_id=event.message_id,
             has_image=bool(event.content.images),
             images=[str(image.path) for image in prepared],
+            session_name=event.group_name if event.is_group else event.sender_name,
         )
         self._maybe_prune(session)
 
