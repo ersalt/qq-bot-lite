@@ -441,6 +441,7 @@ function uiSearchSelect(options) {
           value: item.value === undefined || item.value === null ? "" : String(item.value),
           label: item.label === undefined || item.label === null ? String(item.value ?? "") : String(item.label),
           hint: item.hint ? String(item.hint) : "",
+          icon: item.icon ? String(item.icon) : "",
           disabled: Boolean(item.disabled),
         };
       }
@@ -466,7 +467,15 @@ function uiSearchSelect(options) {
   search.className = "input";
   search.placeholder = config.searchPlaceholder || "搜索…";
   search.setAttribute("aria-label", config.searchLabel || "搜索选项");
-  searchWrap.append(search);
+  searchWrap.append(
+    uiSelectIcon(
+      "0 0 16 16",
+      "M7 12.5a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11Zm4-1.5 3 3",
+      "ui-select-search-icon",
+      1.6,
+    ),
+    search,
+  );
   menu.append(searchWrap);
 
   const list = document.createElement("ul");
@@ -502,7 +511,9 @@ function uiSearchSelect(options) {
       node.setAttribute("role", "option");
       node.setAttribute("aria-selected", String(item.value === current));
       if (item.disabled) node.setAttribute("aria-disabled", "true");
-      node.append(uiEl("span", "ui-select-option-label", item.label));
+      const icon = uiEl("span", "ui-select-option-icon", item.icon || "");
+      icon.setAttribute("aria-hidden", "true");
+      node.append(icon, uiEl("span", "ui-select-option-label", item.label));
       if (item.hint) node.append(uiEl("span", "ui-select-option-hint", item.hint));
       node.append(uiSelectIcon("0 0 14 14", "M3 7.4 5.8 10.2 11 4.4", "ui-select-check", 1.5));
       node.addEventListener("pointermove", () => setActive(index, false));

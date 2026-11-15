@@ -13,7 +13,7 @@
 ```
 D:\Dev\qq-bot-lite       本仓库（Python 3.12，venv 在 .venv）
 GitHub: ersalt/qq-bot-lite
-  main     已发布（v0.3.6）
+  main     已发布（v0.3.7）
   develop  开发主线（领先 main 的提交数按 git 实际为准）
 ```
 
@@ -146,9 +146,9 @@ D:\Dev\
 
 ## 当前状态（2026-11-15）
 
-- `v0.3.6` 已发布（2026-11-15）：上下文页手动清理聊天记录（搜索、单会话/全部、确认弹窗）；
-  内置鲸语汇 `0.6.0`、鲸鱼空间 `0.5.5`。上一个正式版 `v0.3.5`：
-  https://github.com/ersalt/qq-bot-lite/releases/tag/v0.3.5
+- `v0.3.7` 已发布（2026-11-15）：上下文清理下拉框视觉/交互对齐参考组件；
+  内置鲸语汇 `0.6.0`、鲸鱼空间 `0.5.5`。上一个正式版 `v0.3.6`：
+  https://github.com/ersalt/qq-bot-lite/releases/tag/v0.3.6
 - 面板：顶栏 + 页头 + 页内页签 + 白卡行式；页签最后是「文档」「关于」；
   设置小字只保留必要短 hint，配置 key 标签已移除；弹窗有打开/退场动画。
 - 文档：guide / settings / development / api / plugin-integration 入口；

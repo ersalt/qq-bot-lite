@@ -828,6 +828,7 @@ function contextClearPanel(section) {
     label: "选择要清理的会话",
     placeholder: "选择要清理的会话…",
     searchPlaceholder: "搜索群号 / QQ号…",
+    menuWidth: 440,
     items: [],
   });
   ctl.append(picker);
@@ -864,6 +865,7 @@ function contextClearPanel(section) {
         value: item.key,
         label: `${item.kind === "group" ? "群聊" : "私聊"} ${item.target_id}`,
         hint: `${item.messages} 条 · ${formatContextTime(item.updated_at)}`,
+        icon: item.kind === "group" ? "群" : "私",
       }));
       picker.setItems(options);
       const total = state.items.reduce((sum, item) => sum + item.messages, 0);

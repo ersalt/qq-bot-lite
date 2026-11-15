@@ -540,22 +540,82 @@ button, input, select, textarea { font: inherit; }
   color: var(--muted);
   font-size: 13px;
 }
-.ui-select-menu.searchable { width: 340px; }
+.ui-select-menu.searchable {
+  width: 440px;
+  padding: 6px;
+  border-radius: 14px;
+}
 .ui-select-search {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 2px 3px 6px;
-  background: var(--card);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 10px 9px;
+  border-bottom: 1px solid var(--hairline);
+}
+.ui-select-search-icon {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  color: var(--muted);
 }
 .ui-select-search .input {
   width: 100%;
-  height: 32px;
-  padding: 0 9px;
-  font-size: 12.5px;
-  border-radius: var(--radius-sm);
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 14px;
+}
+.ui-select-search .input:focus {
+  border: 0;
+  box-shadow: none;
 }
 .ui-select-search .input::placeholder { color: var(--key); opacity: .85; }
+.ui-select-search .input::-webkit-search-cancel-button { display: none; }
+.ui-select-menu.searchable .ui-select-list {
+  max-height: 360px;
+  padding-top: 4px;
+}
+.ui-select-menu.searchable .ui-select-option {
+  height: 60px;
+  padding: 0 12px;
+  gap: 12px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.ui-select-option-icon {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.ui-select-menu.searchable .ui-select-option-label { font-weight: 500; }
+.ui-select-menu.searchable .ui-select-option-hint {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--muted);
+}
+.ui-select-menu.searchable .ui-select-option.is-active {
+  background: var(--primary-soft);
+  color: var(--primary-ink);
+}
+.ui-select-menu.searchable .ui-select-option.is-active .ui-select-option-hint {
+  color: color-mix(in oklab, var(--primary-ink) 70%, var(--muted));
+}
+.ui-select-menu.searchable .ui-select-check { display: none; }
+.ui-select-menu.searchable .ui-select-empty {
+  height: 60px;
+  justify-content: center;
+  font-size: 13px;
+}
 
 @keyframes ui-select-in {
   from { opacity: 0; transform: translateY(-6px) scale(.97); }
