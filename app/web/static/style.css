@@ -540,6 +540,22 @@ button, input, select, textarea { font: inherit; }
   color: var(--muted);
   font-size: 13px;
 }
+.ui-select-menu.searchable { width: 340px; }
+.ui-select-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 2px 3px 6px;
+  background: var(--card);
+}
+.ui-select-search .input {
+  width: 100%;
+  height: 32px;
+  padding: 0 9px;
+  font-size: 12.5px;
+  border-radius: var(--radius-sm);
+}
+.ui-select-search .input::placeholder { color: var(--key); opacity: .85; }
 
 @keyframes ui-select-in {
   from { opacity: 0; transform: translateY(-6px) scale(.97); }

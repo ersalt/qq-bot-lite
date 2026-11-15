@@ -229,6 +229,8 @@ function render() {
       panel.append(modelPanel(section));
     } else if (section.id === "persona") {
       panel.append(personaPanel(section));
+    } else if (section.id === "context") {
+      panel.append(contextClearPanel(section));
     } else {
       panel.append(plainSection(section));
     }

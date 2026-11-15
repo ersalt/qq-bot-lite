@@ -800,3 +800,186 @@ async function savePersonaOrder() {
     toast(`排序保存失败：${error.message}`, "bad");
   }
 }
+
+/* ---------- 上下文清理 ---------- */
+
+function contextClearPanel(section) {
+  const wrap = el("div", "stack");
+  wrap.append(plainSection(section));
+
+  const card = el("section", "card");
+  card.append(cardHead("清理聊天上下文", "只删本地 SQLite 记录"));
+  const pad = el("div", "card-pad");
+
+  const row = el("div", "row wide");
+  const head = el("div", "row-head");
+  const label = document.createElement("label");
+  label.textContent = "选择要清理的会话";
+  label.htmlFor = "context-clear-session";
+  head.append(label);
+  row.append(head);
+  row.append(
+    el("p", "hint", "按群号/QQ号搜索。只清这个会话的聊天记录和发送去重记录，不影响配置、人设和插件数据。"),
+  );
+
+  const ctl = el("div", "row-ctl");
+  const picker = uiSearchSelect({
+    id: "context-clear-session",
+    label: "选择要清理的会话",
+    placeholder: "选择要清理的会话…",
+    searchPlaceholder: "搜索群号 / QQ号…",
+    items: [],
+  });
+  ctl.append(picker);
+  row.append(ctl);
+  pad.append(row);
+
+  const note = el("p", "hint", "正在读取会话…");
+  note.id = "context-clear-note";
+  note.setAttribute("aria-live", "polite");
+  pad.append(note);
+
+  const actions = el("div", "card-foot");
+  const clear = uiButton("清除选中会话", { variant: "destructive" });
+  clear.type = "button";
+  clear.disabled = true;
+  const clearAll = uiButton("清空全部会话", { variant: "outline" });
+  clearAll.type = "button";
+  clearAll.disabled = true;
+  actions.append(clear, clearAll);
+  pad.append(actions);
+
+  card.append(pad);
+  wrap.append(card);
+
+  const state = { items: [] };
+
+  async function load() {
+    try {
+      const response = await fetch("/api/context/sessions");
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.message || "读取失败");
+      state.items = data.items || [];
+      const options = state.items.map((item) => ({
+        value: item.key,
+        label: `${item.kind === "group" ? "群聊" : "私聊"} ${item.target_id}`,
+        hint: `${item.messages} 条 · ${formatContextTime(item.updated_at)}`,
+      }));
+      picker.setItems(options);
+      const total = state.items.reduce((sum, item) => sum + item.messages, 0);
+      note.textContent = state.items.length
+        ? `共 ${state.items.length} 个会话，${total} 条记录。清除后不可恢复。`
+        : "没有可清理的会话。";
+      clear.disabled = !state.items.length;
+      clearAll.disabled = !state.items.length;
+      if (!state.items.length) picker.setValue("");
+    } catch (error) {
+      note.textContent = `读取会话失败：${error.message}`;
+      clear.disabled = true;
+      clearAll.disabled = true;
+    }
+  }
+
+  picker.addEventListener("change", () => {
+    clear.disabled = !picker.value;
+  });
+
+  clear.addEventListener("click", () => {
+    const session = state.items.find((item) => item.key === picker.value);
+    if (!session) return;
+    openContextClearDialog({
+      title: "清除这个会话？",
+      description: `${session.kind === "group" ? "群聊" : "私聊"} ${session.target_id} 的聊天记录会被删除，且不能恢复。`,
+      session: session.key,
+      onDone: load,
+    });
+  });
+
+  clearAll.addEventListener("click", () => {
+    openContextClearDialog({
+      title: "清空全部聊天上下文？",
+      description: `将删除 ${state.items.length} 个会话的聊天记录和发送去重记录，且不能恢复。配置、人设和插件数据不会删除。`,
+      all: true,
+      onDone: load,
+    });
+  });
+
+  setTimeout(load, 0);
+  return wrap;
+}
+
+function formatContextTime(seconds) {
+  const date = new Date(Number(seconds || 0) * 1000);
+  if (!Number.isFinite(date.getTime())) return "";
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function openContextClearDialog(options) {
+  const panel = document.createElement("dialog");
+  panel.className = "modal";
+  panel.id = "context-clear-dialog";
+  const close = () => {
+    if (panel.open) panel.close();
+    panel.remove();
+  };
+  panel.addEventListener("click", (event) => {
+    if (event.target === panel) close();
+  });
+  panel.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    close();
+  });
+
+  const box = el("div", "dialog-panel");
+  const header = document.createElement("header");
+  const titleRow = el("div", "dialog-title-row");
+  titleRow.append(el("h2", null, options.title));
+  header.append(titleRow);
+  header.append(el("p", null, options.description));
+  box.append(header);
+
+  const body = document.createElement("section");
+  body.append(el("p", "hint", "删除后，下一句消息会重新开始，不再带入这些旧记录。"));
+  box.append(body);
+
+  const foot = document.createElement("footer");
+  const cancel = uiButton("取消", { variant: "outline" });
+  cancel.type = "button";
+  cancel.addEventListener("click", close);
+  const confirm = uiButton(options.all ? "确认清空全部" : "确认清除", { variant: "destructive" });
+  confirm.type = "button";
+  foot.append(cancel, confirm);
+  box.append(foot);
+  panel.append(box);
+  document.body.append(panel);
+  panel.showModal();
+  panel.focus();
+
+  confirm.addEventListener("click", async () => {
+    confirm.disabled = true;
+    confirm.textContent = "正在清理…";
+    try {
+      const response = await fetch("/api/context/clear", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options.all ? { all: true } : { session: options.session }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        toast(data.message || "清理失败", "bad");
+        confirm.disabled = false;
+        confirm.textContent = options.all ? "确认清空全部" : "确认清除";
+        return;
+      }
+      close();
+      toast(data.cleared === "all" ? "已清空全部会话上下文" : "已清除会话上下文");
+      if (typeof options.onDone === "function") options.onDone();
+    } catch (error) {
+      toast(`清理失败：${error.message}`, "bad");
+      confirm.disabled = false;
+      confirm.textContent = options.all ? "确认清空全部" : "确认清除";
+    }
+  });
+}
+

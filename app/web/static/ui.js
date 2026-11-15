@@ -422,3 +422,231 @@ function uiSwitch(id, checked, labelText) {
   wrap.append(input, label);
   return { wrap, input };
 }
+
+/**
+ * 带搜索框的下拉框。用于会话选择这类选项多、需要快速过滤的场景。
+ * 返回 button；额外提供 setItems/getValue/setValue 方法。
+ */
+function uiSearchSelect(options) {
+  const config = options || {};
+  let items = normalize(config.items || []);
+  let current = config.value === undefined || config.value === null ? "" : String(config.value);
+  const id = config.id || `ui-search-select-${++uiSelectSeq}`;
+  const labelText = config.label || "";
+
+  function normalize(list) {
+    return (list || []).map((item) => {
+      if (item && typeof item === "object") {
+        return {
+          value: item.value === undefined || item.value === null ? "" : String(item.value),
+          label: item.label === undefined || item.label === null ? String(item.value ?? "") : String(item.label),
+          hint: item.hint ? String(item.hint) : "",
+          disabled: Boolean(item.disabled),
+        };
+      }
+      return { value: String(item), label: String(item), hint: "", disabled: false };
+    });
+  }
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "ui-select";
+  button.id = id;
+  button.disabled = Boolean(config.disabled);
+  button.setAttribute("aria-haspopup", "listbox");
+  button.setAttribute("aria-expanded", "false");
+  const valueNode = uiEl("span", "ui-select-value");
+  button.append(valueNode, uiSelectIcon("0 0 12 12", "M3 4.75 6 7.75 9 4.75", "ui-select-chevron", 1.4));
+
+  const menu = uiEl("div", "ui-select-menu searchable");
+  menu.hidden = true;
+  const searchWrap = uiEl("div", "ui-select-search");
+  const search = document.createElement("input");
+  search.type = "search";
+  search.className = "input";
+  search.placeholder = config.searchPlaceholder || "搜索…";
+  search.setAttribute("aria-label", config.searchLabel || "搜索选项");
+  searchWrap.append(search);
+  menu.append(searchWrap);
+
+  const list = document.createElement("ul");
+  list.className = "ui-select-list";
+  list.id = `${id}-list`;
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", labelText || "选项");
+  menu.append(list);
+
+  let open = false;
+  let active = -1;
+  let filtered = [];
+
+  function syncLabel() {
+    const selected = items.find((item) => item.value === current);
+    valueNode.textContent = selected ? selected.label : current || config.placeholder || "请选择";
+    valueNode.classList.toggle("is-placeholder", !selected);
+    button.value = current;
+    button.setAttribute("aria-label", labelText ? `${labelText}：${valueNode.textContent}` : valueNode.textContent);
+  }
+
+  function render() {
+    const q = search.value.trim().toLowerCase();
+    filtered = items.filter((item) => {
+      if (!q) return true;
+      return `${item.label} ${item.hint} ${item.value}`.toLowerCase().includes(q);
+    });
+    list.replaceChildren();
+    active = -1;
+    filtered.forEach((item, index) => {
+      const node = uiEl("li", "ui-select-option");
+      node.dataset.index = String(index);
+      node.setAttribute("role", "option");
+      node.setAttribute("aria-selected", String(item.value === current));
+      if (item.disabled) node.setAttribute("aria-disabled", "true");
+      node.append(uiEl("span", "ui-select-option-label", item.label));
+      if (item.hint) node.append(uiEl("span", "ui-select-option-hint", item.hint));
+      node.append(uiSelectIcon("0 0 14 14", "M3 7.4 5.8 10.2 11 4.4", "ui-select-check", 1.5));
+      node.addEventListener("pointermove", () => setActive(index, false));
+      node.addEventListener("click", () => choose(index));
+      list.append(node);
+      if (item.value === current && active < 0 && !item.disabled) active = index;
+    });
+    if (!filtered.length) list.append(uiEl("li", "ui-select-empty", "没有匹配的会话"));
+    if (active < 0) active = filtered.findIndex((item) => !item.disabled);
+    paintActive();
+  }
+
+  function paintActive() {
+    [...list.querySelectorAll(".ui-select-option")].forEach((node, index) => {
+      node.classList.toggle("is-active", index === active);
+    });
+  }
+
+  function setActive(index, scroll) {
+    if (!filtered.length) return;
+    if (index < 0) index = 0;
+    if (index >= filtered.length) index = filtered.length - 1;
+    active = index;
+    paintActive();
+    const node = list.querySelectorAll(".ui-select-option")[active];
+    if (node && scroll) node.scrollIntoView({ block: "nearest" });
+  }
+
+  function setValue(next) {
+    current = next === undefined || next === null ? "" : String(next);
+    syncLabel();
+  }
+
+  function choose(index) {
+    const item = filtered[index];
+    if (!item || item.disabled) return;
+    setValue(item.value);
+    closeMenu(true);
+    if (typeof config.onChange === "function") config.onChange(current);
+    button.dispatchEvent(new Event("input", { bubbles: true }));
+    button.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function positionMenu() {
+    if (!open) return;
+    const rect = button.getBoundingClientRect();
+    const margin = 8;
+    const width = Math.min(Math.max(config.menuWidth || 360, 280), window.innerWidth - margin * 2);
+    menu.style.width = `${width}px`;
+    menu.style.minWidth = `${width}px`;
+    const height = menu.offsetHeight;
+    let left = Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin));
+    let top = rect.bottom + 6;
+    let placement = "bottom";
+    if (top + height > window.innerHeight - margin && rect.top - 6 - height >= margin) {
+      top = rect.top - 6 - height;
+      placement = "top";
+    }
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.dataset.placement = placement;
+  }
+
+  function onDocPointerDown(event) {
+    if (menu.contains(event.target) || button.contains(event.target)) return;
+    closeMenu(false);
+  }
+
+  function onScroll(event) {
+    if (menu.contains(event.target)) return;
+    positionMenu();
+  }
+
+  function onResize() {
+    positionMenu();
+  }
+
+  function openMenu() {
+    if (open || button.disabled) return;
+    if (uiSelectOpen) uiSelectOpen();
+    open = true;
+    document.body.append(menu);
+    search.value = "";
+    render();
+    menu.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    button.setAttribute("aria-controls", list.id);
+    uiSelectOpen = closeSelf;
+    positionMenu();
+    requestAnimationFrame(() => search.focus({ preventScroll: true }));
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+  }
+
+  const closeSelf = () => closeMenu(false);
+
+  function closeMenu(returnFocus) {
+    if (!open) return;
+    open = false;
+    button.setAttribute("aria-expanded", "false");
+    button.removeAttribute("aria-controls");
+    menu.hidden = true;
+    menu.remove();
+    document.removeEventListener("pointerdown", onDocPointerDown, true);
+    window.removeEventListener("scroll", onScroll, true);
+    window.removeEventListener("resize", onResize);
+    if (uiSelectOpen === closeSelf) uiSelectOpen = null;
+    if (returnFocus) button.focus({ preventScroll: true });
+  }
+
+  search.addEventListener("input", render);
+  search.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(active + (event.key === "ArrowDown" ? 1 : -1), true);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      choose(active);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeMenu(true);
+    } else if (event.key === "Tab") {
+      closeMenu(true);
+    }
+  });
+  button.addEventListener("click", () => (open ? closeMenu(true) : openMenu()));
+  button.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openMenu();
+    }
+  });
+
+  syncLabel();
+  button.setItems = (next) => {
+    items = normalize(next || []);
+    if (current && !items.some((item) => item.value === current)) current = "";
+    if (open) render();
+    syncLabel();
+  };
+  button.getValue = () => current;
+  button.setValue = setValue;
+  return button;
+}
+
